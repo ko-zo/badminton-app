@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 背景 -->
+  <rect width="512" height="512" fill="#2E7D32" rx="64"/>
+  <!-- ラケットヘッド（楕円） -->
+  <ellipse cx="256" cy="218" rx="128" ry="144" fill="none" stroke="white" stroke-width="20"/>
+  <!-- 横ストリング -->
+  <line x1="140" y1="166" x2="372" y2="166" stroke="white" stroke-width="7" opacity="0.65"/>
+  <line x1="130" y1="207" x2="382" y2="207" stroke="white" stroke-width="7" opacity="0.65"/>
+  <line x1="130" y1="250" x2="382" y2="250" stroke="white" stroke-width="7" opacity="0.65"/>
+  <line x1="140" y1="292" x2="372" y2="292" stroke="white" stroke-width="7" opacity="0.65"/>
+  <!-- 縦ストリング -->
+  <line x1="200" y1="75" x2="200" y2="355" stroke="white" stroke-width="7" opacity="0.65"/>
+  <line x1="256" y1="74" x2="256" y2="362" stroke="white" stroke-width="7" opacity="0.65"/>
+  <line x1="312" y1="75" x2="312" y2="355" stroke="white" stroke-width="7" opacity="0.65"/>
+  <!-- グリップ -->
+  <rect x="232" y="360" width="48" height="116" fill="white" rx="18"/>
+  <line x1="232" y1="392" x2="280" y2="392" stroke="#4CAF50" stroke-width="8"/>
+  <line x1="232" y1="420" x2="280" y2="420" stroke="#4CAF50" stroke-width="8"/>
+  <line x1="232" y1="448" x2="280" y2="448" stroke="#4CAF50" stroke-width="8"/>
+</svg>

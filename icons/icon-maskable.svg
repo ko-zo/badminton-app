@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- マスカブル用: セーフゾーン(80%)の中にデザインを収める -->
+  <!-- 背景（全面） -->
+  <rect width="512" height="512" fill="#2E7D32"/>
+  <!-- ラケットヘッド -->
+  <ellipse cx="256" cy="230" rx="108" ry="122" fill="none" stroke="white" stroke-width="18"/>
+  <!-- 横ストリング -->
+  <line x1="155" y1="180" x2="357" y2="180" stroke="white" stroke-width="6" opacity="0.65"/>
+  <line x1="149" y1="218" x2="363" y2="218" stroke="white" stroke-width="6" opacity="0.65"/>
+  <line x1="149" y1="256" x2="363" y2="256" stroke="white" stroke-width="6" opacity="0.65"/>
+  <line x1="155" y1="294" x2="357" y2="294" stroke="white" stroke-width="6" opacity="0.65"/>
+  <!-- 縦ストリング -->
+  <line x1="210" y1="109" x2="210" y2="350" stroke="white" stroke-width="6" opacity="0.65"/>
+  <line x1="256" y1="108" x2="256" y2="352" stroke="white" stroke-width="6" opacity="0.65"/>
+  <line x1="302" y1="109" x2="302" y2="350" stroke="white" stroke-width="6" opacity="0.65"/>
+  <!-- グリップ -->
+  <rect x="235" y="350" width="42" height="100" fill="white" rx="14"/>
+  <line x1="235" y1="375" x2="277" y2="375" stroke="#4CAF50" stroke-width="7"/>
+  <line x1="235" y1="400" x2="277" y2="400" stroke="#4CAF50" stroke-width="7"/>
+  <line x1="235" y1="425" x2="277" y2="425" stroke="#4CAF50" stroke-width="7"/>
+</svg>

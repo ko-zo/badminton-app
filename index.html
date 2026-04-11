@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#2E7D32">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="バドミントン">
+  <title>バドミントン組み合わせ</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="app-header">
+    <h1 class="app-title">バドミントン組み合わせ</h1>
+  </header>
+
+  <main class="app-main">
+
+    <!-- 登録簿エリア -->
+    <section class="card" id="roster-section">
+      <h2 class="section-title">
+        登録簿
+        <span class="badge" id="roster-badge" hidden></span>
+      </h2>
+      <div class="add-row">
+        <input
+          type="text"
+          id="member-input"
+          class="text-input"
+          placeholder="名前を入力"
+          maxlength="20"
+          autocomplete="off"
+          inputmode="text"
+        >
+        <button id="add-btn" class="btn btn-primary">追加</button>
+      </div>
+      <ul id="roster-list" class="member-list" aria-label="登録メンバー一覧"></ul>
+      <p id="roster-empty" class="empty-text">メンバーが登録されていません</p>
+    </section>
+
+    <!-- ステータスエリア -->
+    <section class="card" id="status-section">
+      <h2 class="section-title">
+        今回の参加者
+        <span class="badge" id="status-badge" hidden></span>
+      </h2>
+      <ul id="status-list" class="member-list" aria-label="参加者一覧"></ul>
+      <p id="status-empty" class="empty-text">参加者がいません</p>
+    </section>
+
+    <!-- 設定・実行エリア -->
+    <section class="card" id="settings-section">
+      <h2 class="section-title">設定・実行</h2>
+      <div class="court-row">
+        <span class="court-label">コート数</span>
+        <div class="court-controls">
+          <button class="court-btn" id="court-minus" aria-label="コートを減らす">−</button>
+          <output id="court-display" class="court-display">1</output>
+          <button class="court-btn" id="court-plus" aria-label="コートを増やす">＋</button>
+        </div>
+        <span class="court-unit">面</span>
+      </div>
+      <button id="generate-btn" class="btn btn-generate" disabled>組み合わせ作成</button>
+      <p id="generate-hint" class="hint-text" aria-live="polite"></p>
+    </section>
+
+    <!-- 対戦表エリア -->
+    <section class="card" id="matches-section" hidden>
+      <h2 class="section-title">対戦表</h2>
+      <div id="courts-container"></div>
+      <div id="rest-container"></div>
+      <button id="reshuffle-btn" class="btn btn-secondary btn-full">もう一度シャッフル</button>
+    </section>
+
+  </main>
+
+  <!-- 削除確認ダイアログ -->
+  <div id="dialog-overlay" class="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="dialog-message" hidden>
+    <div class="dialog-box">
+      <p id="dialog-message" class="dialog-message"></p>
+      <div class="dialog-actions">
+        <button id="dialog-cancel" class="btn btn-secondary">キャンセル</button>
+        <button id="dialog-ok" class="btn btn-danger">削除</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

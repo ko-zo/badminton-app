@@ -1,0 +1,529 @@
+/* ========================================
+   バドミントン組み合わせアプリ スタイルシート
+   モバイルファースト / タッチ操作最適化
+   ======================================== */
+
+:root {
+  --green-dark:   #1B5E20;
+  --green:        #2E7D32;
+  --green-light:  #4CAF50;
+  --green-pale:   #E8F5E9;
+  --green-mid:    #C8E6C9;
+  --orange:       #E65100;
+  --orange-light: #FF6D00;
+  --red:          #C62828;
+  --text:         #212121;
+  --text-sub:     #616161;
+  --bg:           #F1F3F4;
+  --card:         #FFFFFF;
+  --border:       #E0E0E0;
+  --shadow:       0 2px 8px rgba(0, 0, 0, 0.10);
+  --radius:       14px;
+  --tap:          48px;  /* 最小タップターゲット */
+}
+
+/* ---- Reset ---- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[hidden] { display: none !important; }
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont,
+    'Hiragino Kaku Gothic ProN', 'Hiragino Sans',
+    'Noto Sans JP', 'Yu Gothic UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: 40px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Header ---- */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--green);
+  color: white;
+  padding: 14px 20px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.app-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+/* ---- Main layout ---- */
+.app-main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---- Card ---- */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--green-pale);
+}
+
+/* ---- Badge ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--green-light);
+  color: white;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  padding: 0 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.12s, transform 0.1s;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.btn:active:not(:disabled) { transform: scale(0.97); opacity: 0.9; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--green);
+  color: white;
+}
+
+.btn-secondary {
+  background: #EEEEEE;
+  color: var(--text);
+}
+
+.btn-generate {
+  width: 100%;
+  min-height: 56px;
+  background: var(--orange);
+  color: white;
+  font-size: 17px;
+  border-radius: 12px;
+  margin-top: 6px;
+  box-shadow: 0 3px 8px rgba(230, 81, 0, 0.35);
+}
+
+.btn-danger {
+  background: var(--red);
+  color: white;
+}
+
+.btn-full {
+  width: 100%;
+  margin-top: 16px;
+}
+
+/* ---- Add member row ---- */
+.add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.text-input {
+  flex: 1;
+  height: var(--tap);
+  padding: 0 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--text);
+  background: white;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.text-input:focus {
+  border-color: var(--green-light);
+}
+
+/* ---- Member list ---- */
+.member-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.member-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.member-item:last-child {
+  border-bottom: none;
+}
+
+.member-name {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-text {
+  color: var(--text-sub);
+  font-size: 14px;
+  text-align: center;
+  padding: 14px 0 4px;
+}
+
+/* ---- Toggle switch ---- */
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 28px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: #BDBDBD;
+  border-radius: 28px;
+  transition: background 0.2s;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  transition: transform 0.2s;
+}
+
+.toggle input:checked + .toggle-slider {
+  background: var(--green-light);
+}
+
+.toggle input:checked + .toggle-slider::before {
+  transform: translateX(22px);
+}
+
+/* ---- Delete button ---- */
+.delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: #BDBDBD;
+  font-size: 16px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+
+.delete-btn:hover,
+.delete-btn:focus-visible {
+  color: var(--red);
+  background: #FFEBEE;
+}
+
+/* ---- Rest checkbox ---- */
+.rest-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-sub);
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.rest-label input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--orange);
+  flex-shrink: 0;
+}
+
+/* ---- Court controls ---- */
+.court-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.court-label {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.court-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.court-btn {
+  width: 40px;
+  height: 40px;
+  background: var(--green-pale);
+  border: none;
+  border-radius: 10px;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--green);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  transition: background 0.12s;
+  user-select: none;
+}
+
+.court-btn:active:not(:disabled) {
+  background: var(--green-mid);
+}
+
+.court-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.court-display {
+  min-width: 48px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+  border-radius: 8px;
+  border: 2px solid var(--border);
+}
+
+.court-unit {
+  font-size: 15px;
+  color: var(--text-sub);
+}
+
+.hint-text {
+  font-size: 13px;
+  color: var(--text-sub);
+  text-align: center;
+  margin-top: 8px;
+  min-height: 18px;
+  line-height: 1.4;
+}
+
+/* ---- Court cards ---- */
+.court-card {
+  background: var(--green-pale);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.court-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green-dark);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.match-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pair {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pair-player {
+  background: white;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vs-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--green-dark);
+  background: white;
+  border-radius: 4px;
+  padding: 3px 5px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* ---- Rest sections ---- */
+.rest-block {
+  margin-top: 12px;
+  padding: 12px;
+  background: #FAFAFA;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.rest-block-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.rest-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+}
+
+.rest-chip {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 待機は薄いオレンジ */
+.rest-block.waiting .rest-chip {
+  border-color: #FFCC80;
+  background: #FFF8E1;
+}
+
+/* 希望休憩はグレー */
+.rest-block.hoping .rest-chip {
+  border-color: #E0E0E0;
+  background: #FAFAFA;
+}
+
+/* ---- Dialog ---- */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+  backdrop-filter: blur(2px);
+}
+
+.dialog-box {
+  background: white;
+  border-radius: 18px;
+  padding: 24px 20px 20px;
+  width: 100%;
+  max-width: 300px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+.dialog-message {
+  font-size: 16px;
+  text-align: center;
+  line-height: 1.5;
+  margin-bottom: 20px;
+  word-break: break-all;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.dialog-actions .btn {
+  flex: 1;
+}
