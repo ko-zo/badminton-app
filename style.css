@@ -20,6 +20,13 @@
   --shadow:       0 2px 8px rgba(0, 0, 0, 0.10);
   --radius:       14px;
   --tap:          48px;  /* 最小タップターゲット */
+
+  --male-bg:      #E3F2FD;
+  --male-border:  #90CAF9;
+  --male-text:    #1565C0;
+  --female-bg:    #FCE4EC;
+  --female-border:#F48FB1;
+  --female-text:  #AD1457;
 }
 
 /* ---- Reset ---- */
@@ -197,13 +204,17 @@ body {
   align-items: center;
   gap: 10px;
   min-height: 52px;
-  padding: 8px 2px;
+  padding: 8px 4px;
   border-bottom: 1px solid var(--border);
 }
 
 .member-item:last-child {
   border-bottom: none;
 }
+
+/* 性別カラー（名簿・参加者リスト共通） */
+.member-item.gender-m { background: var(--male-bg); }
+.member-item.gender-f { background: var(--female-bg); }
 
 .member-name {
   flex: 1;
@@ -220,6 +231,37 @@ body {
   font-size: 14px;
   text-align: center;
   padding: 14px 0 4px;
+}
+
+/* ---- 性別ボタン ---- */
+.gender-btn {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  background: white;
+  color: var(--text-sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.gender-btn-M {
+  background: var(--male-bg);
+  border-color: var(--male-border);
+  color: var(--male-text);
+}
+
+.gender-btn-F {
+  background: var(--female-bg);
+  border-color: var(--female-border);
+  color: var(--female-text);
 }
 
 /* ---- Toggle switch ---- */
@@ -318,7 +360,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .court-label {
@@ -379,6 +421,106 @@ body {
   color: var(--text-sub);
 }
 
+/* ---- コート別タイプ設定 ---- */
+#court-type-list {
+  margin-bottom: 14px;
+}
+
+.court-type-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.court-type-row:last-child {
+  border-bottom: none;
+}
+
+.court-type-label {
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.court-type-toggle {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.court-type-btn {
+  padding: 6px 14px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  background: white;
+  color: var(--text-sub);
+  transition: all 0.15s;
+  min-height: 36px;
+}
+
+.court-type-btn.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+}
+
+/* ---- 組み合わせ優先 ---- */
+.preference-group {
+  margin-bottom: 14px;
+}
+
+.preference-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.preference-options {
+  display: flex;
+  gap: 6px;
+}
+
+.preference-option {
+  flex: 1;
+  cursor: pointer;
+}
+
+.preference-option input[type="radio"] {
+  display: none;
+}
+
+.preference-option span {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 8px 4px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-sub);
+  background: white;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.preference-option input[type="radio"]:checked + span {
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+}
+
+/* ---- Hint ---- */
 .hint-text {
   font-size: 13px;
   color: var(--text-sub);
@@ -403,12 +545,31 @@ body {
   letter-spacing: 1px;
   text-transform: uppercase;
   margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.court-type-tag {
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--green-mid);
+  color: var(--green-dark);
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .match-row {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* シングルス用：横並びで均等配置 */
+.singles-row .pair-player {
+  flex: 1;
 }
 
 .pair {
@@ -430,6 +591,17 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 対戦表の性別カラー */
+.pair-player.gender-m {
+  background: var(--male-bg);
+  color: var(--male-text);
+}
+
+.pair-player.gender-f {
+  background: var(--female-bg);
+  color: var(--female-text);
 }
 
 .vs-badge {
@@ -487,6 +659,19 @@ body {
 .rest-block.hoping .rest-chip {
   border-color: #E0E0E0;
   background: #FAFAFA;
+}
+
+/* 性別カラー（待機・休憩チップ） */
+.rest-chip.gender-m {
+  background: var(--male-bg);
+  border-color: var(--male-border);
+  color: var(--male-text);
+}
+
+.rest-chip.gender-f {
+  background: var(--female-bg);
+  border-color: var(--female-border);
+  color: var(--female-text);
 }
 
 /* ---- Dialog ---- */

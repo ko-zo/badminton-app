@@ -55,6 +55,8 @@
     <!-- 設定・実行エリア -->
     <section class="card" id="settings-section">
       <h2 class="section-title">設定・実行</h2>
+
+      <!-- コート数 -->
       <div class="court-row">
         <span class="court-label">コート数</span>
         <div class="court-controls">
@@ -64,6 +66,29 @@
         </div>
         <span class="court-unit">面</span>
       </div>
+
+      <!-- コート別シングル／ダブルス -->
+      <div id="court-type-list"></div>
+
+      <!-- 組み合わせ優先 -->
+      <div class="preference-group" id="preference-group">
+        <span class="preference-label">組み合わせ優先</span>
+        <div class="preference-options">
+          <label class="preference-option">
+            <input type="radio" name="match-pref" value="random" checked>
+            <span>ランダム</span>
+          </label>
+          <label class="preference-option">
+            <input type="radio" name="match-pref" value="mixed">
+            <span>混合優先</span>
+          </label>
+          <label class="preference-option">
+            <input type="radio" name="match-pref" value="same-gender">
+            <span>同性対戦優先</span>
+          </label>
+        </div>
+      </div>
+
       <button id="generate-btn" class="btn btn-generate" disabled>組み合わせ作成</button>
       <p id="generate-hint" class="hint-text" aria-live="polite"></p>
     </section>

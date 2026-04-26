@@ -3,14 +3,18 @@
 // ============================================================
 // 定数・設定
 // ============================================================
-const STORAGE_KEY = 'badminton_v1_members';
-const PLAYERS_PER_COURT = 4; // ダブルス固定（将来のシングルス対応のため定数化）
+const STORAGE_KEY  = 'badminton_v1_members';
+const PRIORITY_KEY = 'badminton_v1_priority';
 
 // ============================================================
 // 状態
 // ============================================================
-let members = [];       // { id: string, name: string, active: boolean, rest: boolean }
-let courtCount = 1;     // 現在のコート数
+let members         = [];         // { id, name, active, rest, gender }
+let courtTypes      = ['doubles']; // 'doubles' | 'singles' — コートごとの種別
+let lastWaitingIds  = [];          // 前回待機だったメンバーID
+let lastRestingIds  = [];          // 前回休憩希望だったメンバーID
+let currentPriorityIds = [];       // 今ラウンドのシャッフル優先ID（リシャッフル用）
+let matchPreference = 'random';    // 'random' | 'mixed' | 'same-gender'
 
 // ============================================================
 // ストレージ
@@ -19,17 +23,28 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) members = JSON.parse(raw);
-  } catch {
-    members = [];
-  }
+  } catch { members = []; }
+  try {
+    const raw = localStorage.getItem(PRIORITY_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      lastWaitingIds = p.waiting || [];
+      lastRestingIds = p.resting || [];
+    }
+  } catch {}
 }
 
 function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(members)); } catch {}
+}
+
+function savePriority() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
-  } catch {
-    // ストレージ容量超過などは無視
-  }
+    localStorage.setItem(PRIORITY_KEY, JSON.stringify({
+      waiting: lastWaitingIds,
+      resting: lastRestingIds,
+    }));
+  } catch {}
 }
 
 // ============================================================
@@ -42,7 +57,7 @@ function generateId() {
 function addMember(name) {
   const trimmed = name.trim();
   if (!trimmed) return false;
-  members.push({ id: generateId(), name: trimmed, active: true, rest: false });
+  members.push({ id: generateId(), name: trimmed, active: true, rest: false, gender: null });
   saveState();
   return true;
 }
@@ -56,7 +71,7 @@ function toggleActive(id) {
   const m = members.find(m => m.id === id);
   if (!m) return;
   m.active = !m.active;
-  if (!m.active) m.rest = false; // 非参加時は休憩希望をリセット
+  if (!m.active) m.rest = false;
   saveState();
 }
 
@@ -67,13 +82,29 @@ function toggleRest(id) {
   saveState();
 }
 
+function cycleGender(id) {
+  const m = members.find(m => m.id === id);
+  if (!m) return;
+  if (m.gender === null)  m.gender = 'M';
+  else if (m.gender === 'M') m.gender = 'F';
+  else                    m.gender = null;
+  saveState();
+}
+
 // ============================================================
 // 計算
 // ============================================================
 function getActiveMembers()   { return members.filter(m => m.active); }
 function getEligiblePlayers() { return members.filter(m => m.active && !m.rest); }
 function getRestPlayers()     { return members.filter(m => m.active && m.rest); }
-function getMaxCourts()       { return Math.floor(getEligiblePlayers().length / PLAYERS_PER_COURT); }
+
+function totalPlayersNeeded() {
+  return courtTypes.reduce((sum, t) => sum + (t === 'singles' ? 2 : 4), 0);
+}
+
+function canAddCourt() {
+  return getEligiblePlayers().length >= totalPlayersNeeded() + 2;
+}
 
 // ============================================================
 // 組み合わせアルゴリズム
@@ -87,23 +118,85 @@ function shuffleArray(arr) {
   return a;
 }
 
-function generateMatches() {
-  const eligible = getEligiblePlayers();
-  const resting  = getRestPlayers();
-  const shuffled = shuffleArray(eligible);
-  const courts   = [];
+// 優先IDのプレイヤーを3倍の重みで並べ、重複を除いて返す
+function weightedShuffle(players, priorityIds) {
+  const pool = [];
+  players.forEach(p => {
+    const weight = priorityIds.includes(p.id) ? 3 : 1;
+    for (let i = 0; i < weight; i++) pool.push(p);
+  });
+  const shuffled = shuffleArray(pool);
+  const seen = new Set();
+  return shuffled.filter(p => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
+}
 
-  for (let i = 0; i < courtCount; i++) {
-    const slice = shuffled.slice(i * PLAYERS_PER_COURT, (i + 1) * PLAYERS_PER_COURT);
-    if (slice.length < PLAYERS_PER_COURT) break;
-    courts.push({
-      pair1: [slice[0], slice[1]],
-      pair2: [slice[2], slice[3]],
-    });
+// 性別優先に応じてプレイヤー順序を調整する
+function applyGenderOrdering(players, preference) {
+  if (preference === 'random') return players;
+
+  const males    = players.filter(p => p.gender === 'M');
+  const females  = players.filter(p => p.gender === 'F');
+  const ungended = players.filter(p => !p.gender);
+
+  if (preference === 'mixed') {
+    // M,F,M,F,... と交互に並べる → 各ペアが自然にM+Fになる（ダブルスのみ有効）
+    const result = [];
+    const len = Math.max(males.length, females.length);
+    for (let i = 0; i < len; i++) {
+      if (i < males.length)   result.push(males[i]);
+      if (i < females.length) result.push(females[i]);
+    }
+    return [...result, ...ungended];
   }
 
-  const assigned = courts.length * PLAYERS_PER_COURT;
-  const waiting  = shuffled.slice(assigned); // 余剰者 → 待機
+  if (preference === 'same-gender') {
+    // M全員 → F全員 → 性別未設定 の順に並べる → 同性グループがコートに固まりやすい
+    return [...males, ...females, ...ungended];
+  }
+
+  return players;
+}
+
+// isNewRound=true のときだけ優先IDを更新する（リシャッフル時は引き継ぐ）
+function generateMatches(isNewRound = true) {
+  const eligible = getEligiblePlayers();
+  const resting  = getRestPlayers();
+
+  if (isNewRound) {
+    currentPriorityIds = [...lastWaitingIds, ...lastRestingIds];
+  }
+
+  let players = weightedShuffle(eligible, currentPriorityIds);
+  players = applyGenderOrdering(players, matchPreference);
+
+  const courts = [];
+  let idx = 0;
+
+  for (let i = 0; i < courtTypes.length; i++) {
+    const type   = courtTypes[i];
+    const needed = type === 'singles' ? 2 : 4;
+    if (idx + needed > players.length) break;
+    const slice = players.slice(idx, idx + needed);
+    idx += needed;
+
+    if (type === 'singles') {
+      courts.push({ type: 'singles', player1: slice[0], player2: slice[1] });
+    } else {
+      courts.push({ type: 'doubles', pair1: [slice[0], slice[1]], pair2: [slice[2], slice[3]] });
+    }
+  }
+
+  const waiting = players.slice(idx);
+
+  if (isNewRound) {
+    lastWaitingIds = waiting.map(p => p.id);
+    lastRestingIds = resting.map(p => p.id);
+    savePriority();
+  }
 
   return { courts, waiting, resting };
 }
@@ -119,11 +212,22 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function genderClass(gender) {
+  if (gender === 'M') return 'gender-m';
+  if (gender === 'F') return 'gender-f';
+  return '';
+}
+
+function genderLabel(gender) {
+  if (gender === 'M') return 'M';
+  if (gender === 'F') return 'F';
+  return '−';
+}
+
 // ============================================================
 // レンダリング
 // ============================================================
 
-/** 登録簿エリア */
 function renderRoster() {
   const list  = document.getElementById('roster-list');
   const empty = document.getElementById('roster-empty');
@@ -142,9 +246,16 @@ function renderRoster() {
   badge.hidden = false;
 
   members.forEach(m => {
+    const gc = genderClass(m.gender);
     const li = document.createElement('li');
-    li.className = 'member-item';
+    li.className = `member-item${gc ? ' ' + gc : ''}`;
     li.innerHTML = `
+      <button
+        class="gender-btn gender-btn-${m.gender || 'none'}"
+        data-action="cycle-gender"
+        data-id="${escapeHtml(m.id)}"
+        aria-label="性別切り替え"
+      >${escapeHtml(genderLabel(m.gender))}</button>
       <span class="member-name">${escapeHtml(m.name)}</span>
       <label class="toggle" title="今回参加">
         <input type="checkbox" data-action="toggle-active" data-id="${escapeHtml(m.id)}"${m.active ? ' checked' : ''}>
@@ -162,7 +273,6 @@ function renderRoster() {
   });
 }
 
-/** ステータスエリア */
 function renderStatus() {
   const list   = document.getElementById('status-list');
   const empty  = document.getElementById('status-empty');
@@ -182,8 +292,9 @@ function renderStatus() {
   badge.hidden = false;
 
   active.forEach(m => {
+    const gc = genderClass(m.gender);
     const li = document.createElement('li');
-    li.className = 'member-item';
+    li.className = `member-item${gc ? ' ' + gc : ''}`;
     li.innerHTML = `
       <span class="member-name">${escapeHtml(m.name)}</span>
       <label class="rest-label">
@@ -195,91 +306,132 @@ function renderStatus() {
   });
 }
 
-/** コート数・ボタン状態を更新 */
+function renderCourtTypes() {
+  const container = document.getElementById('court-type-list');
+  container.innerHTML = '';
+
+  courtTypes.forEach((type, i) => {
+    const row = document.createElement('div');
+    row.className = 'court-type-row';
+    row.innerHTML = `
+      <span class="court-type-label">コート ${i + 1}</span>
+      <div class="court-type-toggle">
+        <button
+          class="court-type-btn${type === 'doubles' ? ' active' : ''}"
+          data-action="set-court-type"
+          data-index="${i}"
+          data-type="doubles"
+        >ダブルス</button>
+        <button
+          class="court-type-btn${type === 'singles' ? ' active' : ''}"
+          data-action="set-court-type"
+          data-index="${i}"
+          data-type="singles"
+        >シングル</button>
+      </div>
+    `;
+    container.appendChild(row);
+  });
+}
+
 function updateSettings() {
-  const maxCourts  = getMaxCourts();
-  const eligible   = getEligiblePlayers().length;
+  const eligible = getEligiblePlayers().length;
+  const needed   = totalPlayersNeeded();
   const generateBtn = document.getElementById('generate-btn');
   const hint        = document.getElementById('generate-hint');
   const minusBtn    = document.getElementById('court-minus');
   const plusBtn     = document.getElementById('court-plus');
   const display     = document.getElementById('court-display');
 
-  // コート数を有効範囲内に収める
-  if (maxCourts < 1) {
-    courtCount = 1;
-  } else {
-    courtCount = Math.min(courtCount, maxCourts);
-    courtCount = Math.max(courtCount, 1);
-  }
-  display.textContent = courtCount;
+  display.textContent = courtTypes.length;
+  minusBtn.disabled = courtTypes.length <= 1;
+  plusBtn.disabled  = !canAddCourt();
 
-  // ± ボタンの有効・無効
-  minusBtn.disabled = courtCount <= 1;
-  plusBtn.disabled  = courtCount >= maxCourts || maxCourts < 1;
-
-  // 作成ボタン & ヒントメッセージ
-  if (eligible < PLAYERS_PER_COURT) {
+  if (eligible < 2) {
     generateBtn.disabled = true;
-    const need = PLAYERS_PER_COURT - eligible;
-    hint.textContent = `あと ${need} 人参加（または休憩解除）で作成できます`;
+    hint.textContent = `あと ${2 - eligible} 人参加（または休憩解除）で作成できます`;
+  } else if (needed > eligible) {
+    generateBtn.disabled = true;
+    hint.textContent = `選手が足りません（必要: ${needed}人 / 対象: ${eligible}人）`;
   } else {
     generateBtn.disabled = false;
-    hint.textContent = `${eligible} 人対象 / 最大 ${maxCourts} コート`;
+    hint.textContent = `${eligible} 人対象 / ${courtTypes.length} コート`;
   }
+
+  renderCourtTypes();
 }
 
-/** 対戦表エリアを描画 */
+function playerHtml(player) {
+  const gc = genderClass(player.gender);
+  return `<div class="pair-player${gc ? ' ' + gc : ''}">${escapeHtml(player.name)}</div>`;
+}
+
 function renderMatches(result) {
-  const section        = document.getElementById('matches-section');
+  const section         = document.getElementById('matches-section');
   const courtsContainer = document.getElementById('courts-container');
-  const restContainer  = document.getElementById('rest-container');
+  const restContainer   = document.getElementById('rest-container');
 
   courtsContainer.innerHTML = '';
   restContainer.innerHTML   = '';
 
-  // コートカード
   result.courts.forEach((court, i) => {
     const card = document.createElement('div');
     card.className = 'court-card';
-    card.innerHTML = `
-      <div class="court-card-title">コート ${i + 1}</div>
-      <div class="match-row">
-        <div class="pair">
-          <div class="pair-player">${escapeHtml(court.pair1[0].name)}</div>
-          <div class="pair-player">${escapeHtml(court.pair1[1].name)}</div>
+
+    if (court.type === 'singles') {
+      card.innerHTML = `
+        <div class="court-card-title">コート ${i + 1} <span class="court-type-tag">シングル</span></div>
+        <div class="match-row singles-row">
+          ${playerHtml(court.player1)}
+          <div class="vs-badge">VS</div>
+          ${playerHtml(court.player2)}
         </div>
-        <div class="vs-badge">VS</div>
-        <div class="pair">
-          <div class="pair-player">${escapeHtml(court.pair2[0].name)}</div>
-          <div class="pair-player">${escapeHtml(court.pair2[1].name)}</div>
+      `;
+    } else {
+      card.innerHTML = `
+        <div class="court-card-title">コート ${i + 1} <span class="court-type-tag">ダブルス</span></div>
+        <div class="match-row">
+          <div class="pair">
+            ${playerHtml(court.pair1[0])}
+            ${playerHtml(court.pair1[1])}
+          </div>
+          <div class="vs-badge">VS</div>
+          <div class="pair">
+            ${playerHtml(court.pair2[0])}
+            ${playerHtml(court.pair2[1])}
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    }
+
     courtsContainer.appendChild(card);
   });
 
-  // 待機（コートに入れなかった余剰者）
   if (result.waiting.length > 0) {
     const div = document.createElement('div');
     div.className = 'rest-block waiting';
     div.innerHTML = `
       <div class="rest-block-title">待機 (${result.waiting.length}人)</div>
       <ul class="rest-chips">
-        ${result.waiting.map(m => `<li class="rest-chip">${escapeHtml(m.name)}</li>`).join('')}
+        ${result.waiting.map(m => {
+          const gc = genderClass(m.gender);
+          return `<li class="rest-chip${gc ? ' ' + gc : ''}">${escapeHtml(m.name)}</li>`;
+        }).join('')}
       </ul>
     `;
     restContainer.appendChild(div);
   }
 
-  // 希望休憩
   if (result.resting.length > 0) {
     const div = document.createElement('div');
     div.className = 'rest-block hoping';
     div.innerHTML = `
       <div class="rest-block-title">希望休憩 (${result.resting.length}人)</div>
       <ul class="rest-chips">
-        ${result.resting.map(m => `<li class="rest-chip">${escapeHtml(m.name)}</li>`).join('')}
+        ${result.resting.map(m => {
+          const gc = genderClass(m.gender);
+          return `<li class="rest-chip${gc ? ' ' + gc : ''}">${escapeHtml(m.name)}</li>`;
+        }).join('')}
       </ul>
     `;
     restContainer.appendChild(div);
@@ -289,7 +441,6 @@ function renderMatches(result) {
   section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-/** 全エリアを再描画 */
 function renderAll() {
   renderRoster();
   renderStatus();
@@ -342,8 +493,14 @@ function setupEvents() {
   });
 
   document.getElementById('roster-list').addEventListener('click', e => {
-    const btn = e.target.closest('[data-action="delete"]');
-    if (btn) showDeleteDialog(btn.dataset.id, btn.dataset.name);
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    if (btn.dataset.action === 'delete') {
+      showDeleteDialog(btn.dataset.id, btn.dataset.name);
+    } else if (btn.dataset.action === 'cycle-gender') {
+      cycleGender(btn.dataset.id);
+      renderAll();
+    }
   });
 
   // ---- ステータス（イベント委譲） ----
@@ -356,29 +513,46 @@ function setupEvents() {
 
   // ---- コート数 ± ----
   document.getElementById('court-minus').addEventListener('click', () => {
-    if (courtCount > 1) {
-      courtCount--;
+    if (courtTypes.length > 1) {
+      courtTypes.pop();
       updateSettings();
     }
   });
 
   document.getElementById('court-plus').addEventListener('click', () => {
-    const max = getMaxCourts();
-    if (courtCount < max) {
-      courtCount++;
+    if (canAddCourt()) {
+      courtTypes.push('doubles');
       updateSettings();
     }
   });
 
-  // ---- 組み合わせ作成 ----
+  // ---- コートタイプ切り替え（イベント委譲） ----
+  document.getElementById('court-type-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="set-court-type"]');
+    if (!btn) return;
+    const idx  = parseInt(btn.dataset.index, 10);
+    const type = btn.dataset.type;
+    if (courtTypes[idx] === type) return;
+    courtTypes[idx] = type;
+    updateSettings();
+  });
+
+  // ---- 組み合わせ優先 ----
+  document.getElementById('preference-group').addEventListener('change', e => {
+    if (e.target.name === 'match-pref') {
+      matchPreference = e.target.value;
+    }
+  });
+
+  // ---- 組み合わせ作成（新ラウンド：優先IDを更新） ----
   document.getElementById('generate-btn').addEventListener('click', () => {
-    const result = generateMatches();
+    const result = generateMatches(true);
     renderMatches(result);
   });
 
-  // ---- もう一度シャッフル ----
+  // ---- もう一度シャッフル（同ラウンド：優先IDを引き継ぐ） ----
   document.getElementById('reshuffle-btn').addEventListener('click', () => {
-    const result = generateMatches();
+    const result = generateMatches(false);
     renderMatches(result);
   });
 
@@ -393,12 +567,10 @@ function setupEvents() {
     hideDeleteDialog();
   });
 
-  // オーバーレイ外クリックでキャンセル
   document.getElementById('dialog-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('dialog-overlay')) hideDeleteDialog();
   });
 
-  // ESCキーでキャンセル
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !document.getElementById('dialog-overlay').hidden) {
       hideDeleteDialog();
@@ -411,9 +583,7 @@ function setupEvents() {
 // ============================================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {
-      // Service Worker 未対応環境は無視
-    });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   });
 }
 
