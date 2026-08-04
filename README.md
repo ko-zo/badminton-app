@@ -6,7 +6,7 @@
 ## アプリURL
 
 ```
-https://ko-zo.github.io/20260414_badminton-app/
+https://ko-zo.github.io/badminton-app/
 ```
 
 ---
@@ -85,10 +85,10 @@ https://ko-zo.github.io/20260414_badminton-app/
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/ko-zo/20260414_badminton-app.git
+git clone https://github.com/ko-zo/badminton-app.git
 
 # フォルダを開く
-cd 20260414_badminton-app
+cd badminton-app
 ```
 
 ### 編集からデプロイまでの流れ
