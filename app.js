@@ -5,6 +5,10 @@
 // ============================================================
 const STORAGE_KEY  = 'badminton_v1_members';
 const PRIORITY_KEY = 'badminton_v1_priority';
+const SETTINGS_KEY = 'badminton_v1_settings';
+
+const COURT_TYPES  = ['doubles', 'singles'];
+const PREFERENCES  = ['random', 'mixed', 'same-gender'];
 
 // ============================================================
 // 状態
@@ -32,6 +36,15 @@ function loadState() {
       lastRestingIds = p.resting || [];
     }
   } catch {}
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      const types = (s.courtTypes || []).filter(t => COURT_TYPES.includes(t));
+      if (types.length > 0) courtTypes = types;
+      if (PREFERENCES.includes(s.matchPreference)) matchPreference = s.matchPreference;
+    }
+  } catch {}
 }
 
 function saveState() {
@@ -43,6 +56,15 @@ function savePriority() {
     localStorage.setItem(PRIORITY_KEY, JSON.stringify({
       waiting: lastWaitingIds,
       resting: lastRestingIds,
+    }));
+  } catch {}
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      courtTypes,
+      matchPreference,
     }));
   } catch {}
 }
@@ -100,6 +122,17 @@ function getRestPlayers()     { return members.filter(m => m.active && m.rest); 
 
 function totalPlayersNeeded() {
   return courtTypes.reduce((sum, t) => sum + (t === 'singles' ? 2 : 4), 0);
+}
+
+// 先頭から順にコートを埋めたとき、実際に出場する人数
+function playingCount(available) {
+  let count = 0;
+  for (const type of courtTypes) {
+    const needed = type === 'singles' ? 2 : 4;
+    if (count + needed > available) break;
+    count += needed;
+  }
+  return count;
 }
 
 function canAddCourt() {
@@ -170,8 +203,14 @@ function generateMatches(isNewRound = true) {
     currentPriorityIds = [...lastWaitingIds, ...lastRestingIds];
   }
 
-  let players = weightedShuffle(eligible, currentPriorityIds);
-  players = applyGenderOrdering(players, matchPreference);
+  // 誰が出場するかは重み付きシャッフルだけで決め、性別による並べ替えは出場者の中だけで行う。
+  // 全体を並べ替えると性別未設定のメンバーが常に末尾へ回され、待機に偏るため。
+  const shuffled  = weightedShuffle(eligible, currentPriorityIds);
+  const playCount = playingCount(shuffled.length);
+  const players   = [
+    ...applyGenderOrdering(shuffled.slice(0, playCount), matchPreference),
+    ...shuffled.slice(playCount),
+  ];
 
   const courts = [];
   let idx = 0;
@@ -332,6 +371,12 @@ function renderCourtTypes() {
     `;
     container.appendChild(row);
   });
+}
+
+// 保存された組み合わせ優先をラジオボタンに反映する（コート設定は renderCourtTypes が描画する）
+function renderPreference() {
+  const radio = document.querySelector(`input[name="match-pref"][value="${matchPreference}"]`);
+  if (radio) radio.checked = true;
 }
 
 function updateSettings() {
@@ -515,6 +560,7 @@ function setupEvents() {
   document.getElementById('court-minus').addEventListener('click', () => {
     if (courtTypes.length > 1) {
       courtTypes.pop();
+      saveSettings();
       updateSettings();
     }
   });
@@ -522,6 +568,7 @@ function setupEvents() {
   document.getElementById('court-plus').addEventListener('click', () => {
     if (canAddCourt()) {
       courtTypes.push('doubles');
+      saveSettings();
       updateSettings();
     }
   });
@@ -534,6 +581,7 @@ function setupEvents() {
     const type = btn.dataset.type;
     if (courtTypes[idx] === type) return;
     courtTypes[idx] = type;
+    saveSettings();
     updateSettings();
   });
 
@@ -541,6 +589,7 @@ function setupEvents() {
   document.getElementById('preference-group').addEventListener('change', e => {
     if (e.target.name === 'match-pref') {
       matchPreference = e.target.value;
+      saveSettings();
     }
   });
 
@@ -591,5 +640,6 @@ if ('serviceWorker' in navigator) {
 // 初期化
 // ============================================================
 loadState();
+renderPreference();
 setupEvents();
 renderAll();
