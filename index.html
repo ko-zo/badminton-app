@@ -2,7 +2,8 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <!-- 文字を拡大して読みたい人のため、ピンチ操作を禁止しない -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#2E7D32">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -149,6 +150,7 @@
       <section class="card">
         <h2 class="section-title">過去の記録</h2>
         <ul id="past-list" class="past-list" aria-label="過去の練習会一覧"></ul>
+        <p id="past-hint" class="chip-hint" hidden>日付をタップすると、その日の対戦内容を表示します</p>
         <p id="past-empty" class="empty-text">過去の記録はありません</p>
         <button id="export-btn" class="btn btn-secondary btn-full">記録をファイルに書き出す</button>
       </section>

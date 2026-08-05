@@ -41,6 +41,7 @@ let matchPreference = 'random';    // 'random' | 'mixed' | 'same-gender'
 let activeTab       = 'members';
 let sessions        = [];          // [{ date, names: {id:name}, rounds: [...] }]
 let pendingRound    = null;        // 表示中で未確定の組み合わせ（確定するまで記録されない）
+let expandedPastDate = null;       // 記録タブで開いている過去セッションの日付
 
 // ============================================================
 // ストレージ
@@ -539,6 +540,26 @@ function nameOf(id, names) {
   return (names && names[id]) || '(削除済み)';
 }
 
+function formatDate(key) {
+  const [y, m, d] = String(key).split('-').map(Number);
+  if (!y || !m || !d) return String(key);
+  const w = '日月火水木金土'[new Date(y, m - 1, d).getDay()];
+  return `${y}年${m}月${d}日(${w})`;
+}
+
+// 対戦カードの1行分。今日の履歴と過去の記録で同じ形式を使う
+function roundLinesHtml(round, names) {
+  return (round.courts || []).map((c, i) => {
+    const tag  = c.type === 'singles' ? 'シングル' : 'ダブルス';
+    const text = c.type === 'singles'
+      ? `${nameOf(c.player1, names)} vs ${nameOf(c.player2, names)}`
+      : `${c.pair1.map(id => nameOf(id, names)).join('・')} vs ${c.pair2.map(id => nameOf(id, names)).join('・')}`;
+    return `<div class="history-line">
+      <span class="history-court-tag">${escapeHtml(tag)}</span>${escapeHtml(`コート${i + 1}　${text}`)}
+    </div>`;
+  }).join('');
+}
+
 // ============================================================
 // タブ
 // ============================================================
@@ -861,48 +882,71 @@ function renderHistory() {
   session.rounds.forEach((round, index) => {
     const div = document.createElement('div');
     div.className = 'history-round';
-
-    const lines = (round.courts || []).map((c, i) => {
-      const tag  = c.type === 'singles' ? 'シングル' : 'ダブルス';
-      const text = c.type === 'singles'
-        ? `${nameOf(c.player1, session.names)} vs ${nameOf(c.player2, session.names)}`
-        : `${c.pair1.map(id => nameOf(id, session.names)).join('・')} vs ${c.pair2.map(id => nameOf(id, session.names)).join('・')}`;
-      return `<div class="history-line">
-        <span class="history-court-tag">${escapeHtml(tag)}</span>${escapeHtml(`コート${i + 1}　${text}`)}
-      </div>`;
-    }).join('');
-
     div.innerHTML = `
       <div class="history-head">
         <span class="history-title">${escapeHtml(formatTime(round.at))} の試合</span>
         <button class="delete-btn" data-action="delete-round" data-index="${index}"
                 aria-label="この試合の記録を削除">✕</button>
       </div>
-      ${lines}
+      ${roundLinesHtml(round, session.names)}
     `;
     container.prepend(div);
   });
 }
 
+// 過去の記録は日付だけでは内容が読めないため、開いて中身を確認できるようにする
+function pastDetailHtml(session) {
+  const counts = {};
+  session.rounds.forEach(r => playersInRound(r).forEach(id => {
+    counts[id] = (counts[id] || 0) + 1;
+  }));
+
+  const summary = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, n]) => `${escapeHtml(nameOf(id, session.names))} ${n}`)
+    .join('　/　');
+
+  const rounds = [...session.rounds].reverse().map(r => `
+    <div class="history-round">
+      <div class="history-head">
+        <span class="history-title">${escapeHtml(formatTime(r.at))} の試合</span>
+      </div>
+      ${roundLinesHtml(r, session.names)}
+    </div>
+  `).join('');
+
+  return (summary ? `<p class="past-summary">試合数　${summary}</p>` : '')
+       + (rounds || '<p class="empty-text">記録がありません</p>');
+}
+
 function renderPast() {
   const list  = document.getElementById('past-list');
   const empty = document.getElementById('past-empty');
+  const hint  = document.getElementById('past-hint');
   const past  = sessions.filter(s => s.date !== todayKey());
 
   list.innerHTML = '';
 
   if (past.length === 0) {
     empty.hidden = false;
+    hint.hidden  = true;
     return;
   }
   empty.hidden = true;
+  hint.hidden  = false;
 
   [...past].reverse().forEach(s => {
+    const open = expandedPastDate === s.date;
     const li = document.createElement('li');
     li.className = 'past-item';
     li.innerHTML = `
-      <span class="past-date">${escapeHtml(s.date)}</span>
-      <span class="past-count">${s.rounds.length} ラウンド</span>
+      <button class="past-head" data-action="toggle-past" data-date="${escapeHtml(s.date)}"
+              aria-expanded="${open ? 'true' : 'false'}">
+        <span class="past-arrow">${open ? '▼' : '▶'}</span>
+        <span class="past-date">${escapeHtml(formatDate(s.date))}</span>
+        <span class="past-count">${s.rounds.length} ラウンド</span>
+      </button>
+      ${open ? `<div class="past-detail">${pastDetailHtml(s)}</div>` : ''}
     `;
     list.appendChild(li);
   });
@@ -1088,6 +1132,14 @@ function setupEvents() {
       deleteRound(index);
       renderLog();
     });
+  });
+
+  // ---- 過去の記録の開閉（イベント委譲） ----
+  document.getElementById('past-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="toggle-past"]');
+    if (!btn) return;
+    expandedPastDate = expandedPastDate === btn.dataset.date ? null : btn.dataset.date;
+    renderPast();
   });
 
   // ---- 書き出し ----

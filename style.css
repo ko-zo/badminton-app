@@ -237,11 +237,20 @@ body {
   margin-top: 4px;
 }
 
+/* 白地に薄いグレーだと輪郭が分かりにくいため、枠線を付けてボタンだと分かるようにする。
+   ただし主ボタンより目立たせない */
 .action-row .btn {
   flex: 1;
-  min-height: 44px;
-  font-size: 14px;
+  min-height: var(--tap);
   padding: 0 12px;
+  background: white;
+  border: 2px solid #8C8C8C;  /* 白地に対して3:1以上のコントラストを確保する */
+  color: var(--text);
+  font-size: 15px;
+}
+
+.action-row .btn:active:not(:disabled) {
+  background: #F0F0F0;
 }
 
 /* ---- Add member row ---- */
@@ -912,16 +921,46 @@ body {
 }
 
 .past-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 6px 4px;
   border-bottom: 1px solid var(--border);
-  font-size: 14px;
 }
 
 .past-item:last-child { border-bottom: none; }
 
+/* 日付をタップすると中身が開く。過去の記録が画面で読めないと見読性を満たさないため */
+.past-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 8px 4px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.past-arrow {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-sub);
+}
+
 .past-date { flex: 1; font-weight: 500; }
-.past-count { color: var(--text-sub); }
+.past-count { flex-shrink: 0; color: var(--text-sub); }
+
+.past-detail { padding: 2px 0 12px; }
+
+.past-summary {
+  background: var(--green-pale);
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--green-dark);
+  word-break: break-word;
+}
