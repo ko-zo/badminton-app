@@ -52,14 +52,18 @@ body {
 }
 
 /* ---- Header ---- */
-.app-header {
+/* ヘッダーとタブをまとめて固定する（個別に sticky にすると重なるため） */
+.app-top {
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.app-header {
   background: var(--green);
   color: white;
   padding: 14px 20px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .app-title {
@@ -68,11 +72,42 @@ body {
   letter-spacing: 0.3px;
 }
 
+/* ---- Tabs ---- */
+.tab-bar {
+  display: flex;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+  flex: 1;
+  min-height: var(--tap);
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-sub);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+
+.tab-btn.active {
+  color: var(--green);
+  border-bottom-color: var(--green);
+  background: var(--green-pale);
+}
+
 /* ---- Main layout ---- */
 .app-main {
   max-width: 480px;
   margin: 0 auto;
   padding: 14px 12px;
+}
+
+.tab-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -165,6 +200,34 @@ body {
 .btn-full {
   width: 100%;
   margin-top: 16px;
+}
+
+/* 確定は最も押される操作なので大きく目立たせる。取り消しは控えめにして誤操作を防ぐ */
+.btn-confirm {
+  flex: 1;
+  min-height: 56px;
+  background: var(--green);
+  color: white;
+  font-size: 16px;
+  box-shadow: 0 3px 8px rgba(46, 125, 50, 0.35);
+}
+
+/* ---- Action area（作成／シャッフル・確定・取り消し） ---- */
+.action-area {
+  display: flex;
+  flex-direction: column;
+}
+
+.action-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.action-row .btn-secondary {
+  flex: 0 0 auto;
+  padding: 0 16px;
+  font-size: 14px;
 }
 
 /* ---- Add member row ---- */
@@ -712,3 +775,108 @@ body {
 .dialog-actions .btn {
   flex: 1;
 }
+
+/* ---- 記録タブ：試合数一覧 ---- */
+.count-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.count-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.count-item:last-child { border-bottom: none; }
+.count-item.gender-m { background: var(--male-bg); }
+.count-item.gender-f { background: var(--female-bg); }
+
+.count-name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 試合数が最少の人が一目で分かるよう色を変える */
+.count-value {
+  flex-shrink: 0;
+  min-width: 52px;
+  text-align: right;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.count-item.count-min .count-value { color: var(--orange); }
+
+/* ---- 記録タブ：対戦履歴 ---- */
+.history-round {
+  background: #FAFAFA;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.history-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+  letter-spacing: 0.5px;
+}
+
+.history-line {
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.history-court-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--green-mid);
+  color: var(--green-dark);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-right: 6px;
+}
+
+/* ---- 記録タブ：過去の記録 ---- */
+.past-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.past-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.past-item:last-child { border-bottom: none; }
+
+.past-date { flex: 1; font-weight: 500; }
+.past-count { color: var(--text-sub); }

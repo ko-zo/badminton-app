@@ -14,96 +14,142 @@
 </head>
 <body>
 
-  <header class="app-header">
-    <h1 class="app-title">バドミントン組み合わせ</h1>
-  </header>
+  <div class="app-top">
+    <header class="app-header">
+      <h1 class="app-title">バドミントン組み合わせ</h1>
+    </header>
+
+    <nav class="tab-bar" role="tablist" aria-label="画面切り替え">
+      <button class="tab-btn active" role="tab" id="tab-members"
+              data-tab="members" aria-selected="true" aria-controls="panel-members">メンバー</button>
+      <button class="tab-btn" role="tab" id="tab-match"
+              data-tab="match" aria-selected="false" aria-controls="panel-match">試合</button>
+      <button class="tab-btn" role="tab" id="tab-log"
+              data-tab="log" aria-selected="false" aria-controls="panel-log">記録</button>
+    </nav>
+  </div>
 
   <main class="app-main">
 
-    <!-- 登録簿エリア -->
-    <section class="card" id="roster-section">
-      <h2 class="section-title">
-        登録簿
-        <span class="badge" id="roster-badge" hidden></span>
-      </h2>
-      <div class="add-row">
-        <input
-          type="text"
-          id="member-input"
-          class="text-input"
-          placeholder="名前を入力"
-          maxlength="20"
-          autocomplete="off"
-          inputmode="text"
-        >
-        <button id="add-btn" class="btn btn-primary">追加</button>
-      </div>
-      <ul id="roster-list" class="member-list" aria-label="登録メンバー一覧"></ul>
-      <p id="roster-empty" class="empty-text">メンバーが登録されていません</p>
-    </section>
+    <!-- ============ メンバータブ ============ -->
+    <div class="tab-panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members">
 
-    <!-- ステータスエリア -->
-    <section class="card" id="status-section">
-      <h2 class="section-title">
-        今回の参加者
-        <span class="badge" id="status-badge" hidden></span>
-      </h2>
-      <ul id="status-list" class="member-list" aria-label="参加者一覧"></ul>
-      <p id="status-empty" class="empty-text">参加者がいません</p>
-    </section>
-
-    <!-- 設定・実行エリア -->
-    <section class="card" id="settings-section">
-      <h2 class="section-title">設定・実行</h2>
-
-      <!-- コート数 -->
-      <div class="court-row">
-        <span class="court-label">コート数</span>
-        <div class="court-controls">
-          <button class="court-btn" id="court-minus" aria-label="コートを減らす">−</button>
-          <output id="court-display" class="court-display">1</output>
-          <button class="court-btn" id="court-plus" aria-label="コートを増やす">＋</button>
+      <section class="card">
+        <h2 class="section-title">
+          登録簿
+          <span class="badge" id="roster-badge" hidden></span>
+        </h2>
+        <div class="add-row">
+          <input
+            type="text"
+            id="member-input"
+            class="text-input"
+            placeholder="名前を入力"
+            maxlength="20"
+            autocomplete="off"
+            inputmode="text"
+          >
+          <button id="add-btn" class="btn btn-primary">追加</button>
         </div>
-        <span class="court-unit">面</span>
-      </div>
+        <ul id="roster-list" class="member-list" aria-label="登録メンバー一覧"></ul>
+        <p id="roster-empty" class="empty-text">メンバーが登録されていません</p>
+      </section>
 
-      <!-- コート別シングル／ダブルス -->
-      <div id="court-type-list"></div>
+      <section class="card">
+        <h2 class="section-title">
+          今回の参加者
+          <span class="badge" id="status-badge" hidden></span>
+        </h2>
+        <ul id="status-list" class="member-list" aria-label="参加者一覧"></ul>
+        <p id="status-empty" class="empty-text">参加者がいません</p>
+      </section>
 
-      <!-- 組み合わせ優先 -->
-      <div class="preference-group" id="preference-group">
-        <span class="preference-label">組み合わせ優先</span>
-        <div class="preference-options">
-          <label class="preference-option">
-            <input type="radio" name="match-pref" value="random" checked>
-            <span>ランダム</span>
-          </label>
-          <label class="preference-option">
-            <input type="radio" name="match-pref" value="mixed">
-            <span>混合優先</span>
-          </label>
-          <label class="preference-option">
-            <input type="radio" name="match-pref" value="same-gender">
-            <span>同性対戦優先</span>
-          </label>
+    </div>
+
+    <!-- ============ 試合タブ ============ -->
+    <div class="tab-panel" id="panel-match" role="tabpanel" aria-labelledby="tab-match" hidden>
+
+      <section class="card" id="settings-section">
+        <h2 class="section-title">設定</h2>
+
+        <div class="court-row">
+          <span class="court-label">コート数</span>
+          <div class="court-controls">
+            <button class="court-btn" id="court-minus" aria-label="コートを減らす">−</button>
+            <output id="court-display" class="court-display">1</output>
+            <button class="court-btn" id="court-plus" aria-label="コートを増やす">＋</button>
+          </div>
+          <span class="court-unit">面</span>
+        </div>
+
+        <div id="court-type-list"></div>
+
+        <div class="preference-group" id="preference-group">
+          <span class="preference-label">組み合わせ優先</span>
+          <div class="preference-options">
+            <label class="preference-option">
+              <input type="radio" name="match-pref" value="random" checked>
+              <span>ランダム</span>
+            </label>
+            <label class="preference-option">
+              <input type="radio" name="match-pref" value="mixed">
+              <span>混合優先</span>
+            </label>
+            <label class="preference-option">
+              <input type="radio" name="match-pref" value="same-gender">
+              <span>同性対戦優先</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="matches-section" hidden>
+        <h2 class="section-title">対戦表</h2>
+        <div id="courts-container"></div>
+        <div id="rest-container"></div>
+      </section>
+
+      <div class="action-area">
+        <button id="generate-btn" class="btn btn-generate" disabled>組み合わせ作成</button>
+        <p id="generate-hint" class="hint-text" aria-live="polite"></p>
+        <div class="action-row" id="confirm-row" hidden>
+          <button id="clear-btn" class="btn btn-secondary">取り消し</button>
+          <button id="confirm-btn" class="btn btn-confirm">この組み合わせで確定</button>
         </div>
       </div>
 
-      <button id="generate-btn" class="btn btn-generate" disabled>組み合わせ作成</button>
-      <p id="generate-hint" class="hint-text" aria-live="polite"></p>
-    </section>
+    </div>
 
-    <!-- 対戦表エリア -->
-    <section class="card" id="matches-section" hidden>
-      <h2 class="section-title">対戦表</h2>
-      <div id="courts-container"></div>
-      <div id="rest-container"></div>
-      <button id="reshuffle-btn" class="btn btn-secondary btn-full">もう一度シャッフル</button>
-    </section>
+    <!-- ============ 記録タブ ============ -->
+    <div class="tab-panel" id="panel-log" role="tabpanel" aria-labelledby="tab-log" hidden>
+
+      <section class="card">
+        <h2 class="section-title">
+          今日の試合数
+          <span class="badge" id="today-badge" hidden></span>
+        </h2>
+        <ul id="count-list" class="count-list" aria-label="メンバーごとの試合数"></ul>
+        <p id="count-empty" class="empty-text">まだ試合が記録されていません</p>
+      </section>
+
+      <section class="card">
+        <h2 class="section-title">今日の対戦履歴</h2>
+        <div id="history-list"></div>
+        <p id="history-empty" class="empty-text">まだ試合が記録されていません</p>
+      </section>
+
+      <section class="card">
+        <h2 class="section-title">過去の記録</h2>
+        <ul id="past-list" class="past-list" aria-label="過去の練習会一覧"></ul>
+        <p id="past-empty" class="empty-text">過去の記録はありません</p>
+        <button id="export-btn" class="btn btn-secondary btn-full">記録をファイルに書き出す</button>
+      </section>
+
+    </div>
 
   </main>
 
-  <!-- 削除確認ダイアログ -->
+  <!-- 確認ダイアログ -->
   <div id="dialog-overlay" class="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="dialog-message" hidden>
     <div class="dialog-box">
       <p id="dialog-message" class="dialog-message"></p>

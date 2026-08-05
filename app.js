@@ -4,21 +4,37 @@
 // 定数・設定
 // ============================================================
 const STORAGE_KEY  = 'badminton_v1_members';
-const PRIORITY_KEY = 'badminton_v1_priority';
 const SETTINGS_KEY = 'badminton_v1_settings';
+const SESSIONS_KEY = 'badminton_v1_sessions';
+const PENDING_KEY  = 'badminton_v1_pending';
 
-const COURT_TYPES  = ['doubles', 'singles'];
-const PREFERENCES  = ['random', 'mixed', 'same-gender'];
+// 旧バージョンで使っていた「前回待機者を3倍の重みで優先」用のキー。
+// 試合数ベースの公平化に置き換えたため読み込まず、起動時に掃除する。
+const LEGACY_PRIORITY_KEY = 'badminton_v1_priority';
+
+const COURT_TYPES = ['doubles', 'singles'];
+const PREFERENCES = ['random', 'mixed', 'same-gender'];
+const TABS        = ['members', 'match', 'log'];
+
+const MAX_SESSIONS   = 100; // 保持する練習会の数（1回あたり約5KBなので上限5MBに対して十分小さい）
+const ARRANGE_TRIES  = 200; // 組み方の候補を何通り試すか
+
+// 組み方スコアの重み（小さいほど良い組み合わせ）
+const W_PAIR   = 3;   // 同じペアの再結成
+const W_OPP    = 1;   // 同じ対戦の再戦
+// 組み合わせ優先はユーザーが明示的に選んだ設定なので、重複回避より必ず優先させる。
+// 履歴が溜まると重複の減点が積み上がるため、それを確実に上回る値にしている。
+const W_GENDER = 100;
 
 // ============================================================
 // 状態
 // ============================================================
-let members         = [];         // { id, name, active, rest, gender }
+let members         = [];          // { id, name, active, rest, gender }
 let courtTypes      = ['doubles']; // 'doubles' | 'singles' — コートごとの種別
-let lastWaitingIds  = [];          // 前回待機だったメンバーID
-let lastRestingIds  = [];          // 前回休憩希望だったメンバーID
-let currentPriorityIds = [];       // 今ラウンドのシャッフル優先ID（リシャッフル用）
 let matchPreference = 'random';    // 'random' | 'mixed' | 'same-gender'
+let activeTab       = 'members';
+let sessions        = [];          // [{ date, names: {id:name}, rounds: [...] }]
+let pendingRound    = null;        // 表示中で未確定の組み合わせ（確定するまで記録されない）
 
 // ============================================================
 // ストレージ
@@ -28,14 +44,7 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) members = JSON.parse(raw);
   } catch { members = []; }
-  try {
-    const raw = localStorage.getItem(PRIORITY_KEY);
-    if (raw) {
-      const p = JSON.parse(raw);
-      lastWaitingIds = p.waiting || [];
-      lastRestingIds = p.resting || [];
-    }
-  } catch {}
+
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
@@ -43,21 +52,32 @@ function loadState() {
       const types = (s.courtTypes || []).filter(t => COURT_TYPES.includes(t));
       if (types.length > 0) courtTypes = types;
       if (PREFERENCES.includes(s.matchPreference)) matchPreference = s.matchPreference;
+      if (TABS.includes(s.activeTab)) activeTab = s.activeTab;
     }
   } catch {}
+
+  try {
+    const raw = localStorage.getItem(SESSIONS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) sessions = parsed.filter(s => s && typeof s.date === 'string');
+    }
+  } catch {}
+
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      // 日付が変わっていたら前日の未確定分は捨てる
+      if (p && p.date === todayKey() && Array.isArray(p.courts)) pendingRound = hydrateRound(p);
+    }
+  } catch {}
+
+  try { localStorage.removeItem(LEGACY_PRIORITY_KEY); } catch {}
 }
 
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(members)); } catch {}
-}
-
-function savePriority() {
-  try {
-    localStorage.setItem(PRIORITY_KEY, JSON.stringify({
-      waiting: lastWaitingIds,
-      resting: lastRestingIds,
-    }));
-  } catch {}
 }
 
 function saveSettings() {
@@ -65,7 +85,22 @@ function saveSettings() {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({
       courtTypes,
       matchPreference,
+      activeTab,
     }));
+  } catch {}
+}
+
+function saveSessions() {
+  try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); } catch {}
+}
+
+function savePending() {
+  try {
+    if (pendingRound) {
+      localStorage.setItem(PENDING_KEY, JSON.stringify({ date: todayKey(), ...serializeRound(pendingRound) }));
+    } else {
+      localStorage.removeItem(PENDING_KEY);
+    }
   } catch {}
 }
 
@@ -107,10 +142,127 @@ function toggleRest(id) {
 function cycleGender(id) {
   const m = members.find(m => m.id === id);
   if (!m) return;
-  if (m.gender === null)  m.gender = 'M';
+  if (m.gender === null)     m.gender = 'M';
   else if (m.gender === 'M') m.gender = 'F';
-  else                    m.gender = null;
+  else                       m.gender = null;
   saveState();
+}
+
+// ============================================================
+// セッション（練習会 = 1日）と対戦ログ
+// ============================================================
+function todayKey() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+// 公平性の計算は「当日のセッション」だけを見る。
+// 日が変わればメンバーも変わるため、過去日と混ぜると不公平になる。
+function getCurrentSession() {
+  return sessions.find(s => s.date === todayKey()) || null;
+}
+
+function getOrCreateCurrentSession() {
+  let s = getCurrentSession();
+  if (!s) {
+    s = { date: todayKey(), names: {}, rounds: [] };
+    sessions.push(s);
+    if (sessions.length > MAX_SESSIONS) sessions = sessions.slice(-MAX_SESSIONS);
+  }
+  return s;
+}
+
+function serializeRound(round) {
+  return {
+    courts: round.courts.map(c => c.type === 'singles'
+      ? { type: 'singles', player1: c.player1.id, player2: c.player2.id }
+      : { type: 'doubles', pair1: c.pair1.map(p => p.id), pair2: c.pair2.map(p => p.id) }),
+    waiting: round.waiting.map(p => p.id),
+    resting: round.resting.map(p => p.id),
+  };
+}
+
+function hydrateRound(record) {
+  const find = id => members.find(m => m.id === id) || { id, name: '(削除済み)', gender: null };
+  return {
+    courts: (record.courts || []).map(c => c.type === 'singles'
+      ? { type: 'singles', player1: find(c.player1), player2: find(c.player2) }
+      : { type: 'doubles', pair1: (c.pair1 || []).map(find), pair2: (c.pair2 || []).map(find) }),
+    waiting: (record.waiting || []).map(find),
+    resting: (record.resting || []).map(find),
+  };
+}
+
+function confirmPendingRound() {
+  if (!pendingRound) return;
+  const session = getOrCreateCurrentSession();
+  // 名前を控えておくと、あとでメンバーを削除しても履歴が読める
+  members.forEach(m => { session.names[m.id] = m.name; });
+  session.rounds.push({ at: Date.now(), ...serializeRound(pendingRound) });
+  saveSessions();
+  pendingRound = null;
+  savePending();
+}
+
+function clearPendingRound() {
+  pendingRound = null;
+  savePending();
+}
+
+function deleteRound(index) {
+  const session = getCurrentSession();
+  if (!session || index < 0 || index >= session.rounds.length) return;
+  session.rounds.splice(index, 1);
+  saveSessions();
+}
+
+// そのラウンドで実際にコートに立った人のID
+function playersInRound(record) {
+  const ids = [];
+  (record.courts || []).forEach(c => {
+    if (c.type === 'singles') ids.push(c.player1, c.player2);
+    else ids.push(...(c.pair1 || []), ...(c.pair2 || []));
+  });
+  return ids;
+}
+
+// 当日の確定済みラウンドから各メンバーの試合数を数える
+function getMatchCounts() {
+  const counts = {};
+  const session = getCurrentSession();
+  if (session) {
+    session.rounds.forEach(r => {
+      playersInRound(r).forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+    });
+  }
+  return counts;
+}
+
+function pairKey(a, b) { return a < b ? `${a}|${b}` : `${b}|${a}`; }
+
+// 当日の確定済みラウンドから、ペアの回数と対戦の回数を数える
+function getPairHistory() {
+  const pair = {};
+  const opp  = {};
+  const bump = (map, a, b) => { const k = pairKey(a, b); map[k] = (map[k] || 0) + 1; };
+  const session = getCurrentSession();
+
+  if (session) {
+    session.rounds.forEach(r => (r.courts || []).forEach(c => {
+      if (c.type === 'singles') {
+        bump(opp, c.player1, c.player2);
+      } else {
+        const [a, b] = c.pair1 || [];
+        const [x, y] = c.pair2 || [];
+        if (a && b) bump(pair, a, b);
+        if (x && y) bump(pair, x, y);
+        (c.pair1 || []).forEach(p => (c.pair2 || []).forEach(q => bump(opp, p, q)));
+      }
+    }));
+  }
+  return { pair, opp };
 }
 
 // ============================================================
@@ -152,72 +304,77 @@ function shuffleArray(arr) {
   return a;
 }
 
-// 優先IDのプレイヤーを3倍の重みで並べ、重複を除いて返す
-function weightedShuffle(players, priorityIds) {
-  const pool = [];
-  players.forEach(p => {
-    const weight = priorityIds.includes(p.id) ? 3 : 1;
-    for (let i = 0; i < weight; i++) pool.push(p);
-  });
-  const shuffled = shuffleArray(pool);
-  const seen = new Set();
-  return shuffled.filter(p => {
-    if (seen.has(p.id)) return false;
-    seen.add(p.id);
-    return true;
-  });
+// 組み合わせ優先に反していれば減点する。
+// 混合優先はペアの概念があるダブルスのみ、同性対戦優先はシングルスにも効かせる。
+function genderPenalty(side1, side2) {
+  if (matchPreference === 'mixed') {
+    let penalty = 0;
+    [side1, side2].forEach(side => {
+      if (side.length === 2 && side[0].gender && side[1].gender && side[0].gender === side[1].gender) {
+        penalty += W_GENDER;
+      }
+    });
+    return penalty;
+  }
+  if (matchPreference === 'same-gender') {
+    const genders = [...side1, ...side2].map(p => p.gender).filter(Boolean);
+    return genders.includes('M') && genders.includes('F') ? W_GENDER : 0;
+  }
+  return 0;
 }
 
-// 性別優先に応じてプレイヤー順序を調整する
-function applyGenderOrdering(players, preference) {
-  if (preference === 'random') return players;
+// 並び順どおりにコートへ割り当てた場合の「悪さ」を採点する
+function scoreArrangement(players, history) {
+  let score = 0;
+  let idx   = 0;
 
-  const males    = players.filter(p => p.gender === 'M');
-  const females  = players.filter(p => p.gender === 'F');
-  const ungended = players.filter(p => !p.gender);
+  for (const type of courtTypes) {
+    const needed = type === 'singles' ? 2 : 4;
+    if (idx + needed > players.length) break;
 
-  if (preference === 'mixed') {
-    // M,F,M,F,... と交互に並べる → 各ペアが自然にM+Fになる（ダブルスのみ有効）
-    const result = [];
-    const len = Math.max(males.length, females.length);
-    for (let i = 0; i < len; i++) {
-      if (i < males.length)   result.push(males[i]);
-      if (i < females.length) result.push(females[i]);
+    if (type === 'singles') {
+      const [a, b] = players.slice(idx, idx + 2);
+      score += (history.opp[pairKey(a.id, b.id)] || 0) * W_OPP;
+      score += genderPenalty([a], [b]);
+    } else {
+      const [a, b, c, d] = players.slice(idx, idx + 4);
+      score += (history.pair[pairKey(a.id, b.id)] || 0) * W_PAIR;
+      score += (history.pair[pairKey(c.id, d.id)] || 0) * W_PAIR;
+      [[a, c], [a, d], [b, c], [b, d]].forEach(([x, y]) => {
+        score += (history.opp[pairKey(x.id, y.id)] || 0) * W_OPP;
+      });
+      score += genderPenalty([a, b], [c, d]);
     }
-    return [...result, ...ungended];
+    idx += needed;
   }
-
-  if (preference === 'same-gender') {
-    // M全員 → F全員 → 性別未設定 の順に並べる → 同性グループがコートに固まりやすい
-    return [...males, ...females, ...ungended];
-  }
-
-  return players;
+  return score;
 }
 
-// isNewRound=true のときだけ優先IDを更新する（リシャッフル時は引き継ぐ）
-function generateMatches(isNewRound = true) {
-  const eligible = getEligiblePlayers();
-  const resting  = getRestPlayers();
+// 候補を何通りか試して、ペア・対戦の重複と性別優先の点で最良の並びを選ぶ
+function bestArrangement(playing) {
+  if (playing.length === 0) return playing;
+  const history = getPairHistory();
 
-  if (isNewRound) {
-    currentPriorityIds = [...lastWaitingIds, ...lastRestingIds];
+  let best      = playing;
+  let bestScore = Infinity;
+
+  for (let i = 0; i < ARRANGE_TRIES; i++) {
+    const candidate = shuffleArray(playing);
+    const score     = scoreArrangement(candidate, history);
+    if (score < bestScore) {
+      bestScore = score;
+      best      = candidate;
+      if (score === 0) break; // これ以上良くならない
+    }
   }
+  return best;
+}
 
-  // 誰が出場するかは重み付きシャッフルだけで決め、性別による並べ替えは出場者の中だけで行う。
-  // 全体を並べ替えると性別未設定のメンバーが常に末尾へ回され、待機に偏るため。
-  const shuffled  = weightedShuffle(eligible, currentPriorityIds);
-  const playCount = playingCount(shuffled.length);
-  const players   = [
-    ...applyGenderOrdering(shuffled.slice(0, playCount), matchPreference),
-    ...shuffled.slice(playCount),
-  ];
-
+function buildCourts(players) {
   const courts = [];
   let idx = 0;
 
-  for (let i = 0; i < courtTypes.length; i++) {
-    const type   = courtTypes[i];
+  for (const type of courtTypes) {
     const needed = type === 'singles' ? 2 : 4;
     if (idx + needed > players.length) break;
     const slice = players.slice(idx, idx + needed);
@@ -229,14 +386,25 @@ function generateMatches(isNewRound = true) {
       courts.push({ type: 'doubles', pair1: [slice[0], slice[1]], pair2: [slice[2], slice[3]] });
     }
   }
+  return { courts, used: idx };
+}
 
-  const waiting = players.slice(idx);
+function generateMatches() {
+  const eligible = getEligiblePlayers();
+  const resting  = getRestPlayers();
+  const counts   = getMatchCounts();
 
-  if (isNewRound) {
-    lastWaitingIds = waiting.map(p => p.id);
-    lastRestingIds = resting.map(p => p.id);
-    savePriority();
-  }
+  // 誰が出るか: 当日の試合数が少ない人から順に選ぶ（同数の中はランダム）。
+  // 先にシャッフルしてから安定ソートすることで、同数グループの順序がランダムになる。
+  const ordered = shuffleArray(eligible)
+    .sort((a, b) => (counts[a.id] || 0) - (counts[b.id] || 0));
+
+  const playCount = playingCount(ordered.length);
+  const playing   = ordered.slice(0, playCount);
+  const waiting   = ordered.slice(playCount);
+
+  // どう組むか: 出場者の中だけで、重複が少なく優先設定に沿う並びを選ぶ
+  const { courts } = buildCourts(bestArrangement(playing));
 
   return { courts, waiting, resting };
 }
@@ -264,10 +432,41 @@ function genderLabel(gender) {
   return '−';
 }
 
-// ============================================================
-// レンダリング
-// ============================================================
+function formatTime(ms) {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
+function nameOf(id, names) {
+  const m = members.find(x => x.id === id);
+  if (m) return m.name;
+  return (names && names[id]) || '(削除済み)';
+}
+
+// ============================================================
+// タブ
+// ============================================================
+function switchTab(tab) {
+  if (!TABS.includes(tab)) return;
+  activeTab = tab;
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const on = btn.dataset.tab === tab;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.hidden = panel.id !== `panel-${tab}`;
+  });
+
+  if (tab === 'log') renderLog();
+  saveSettings();
+  window.scrollTo(0, 0);
+}
+
+// ============================================================
+// レンダリング：メンバータブ
+// ============================================================
 function renderRoster() {
   const list  = document.getElementById('roster-list');
   const empty = document.getElementById('roster-empty');
@@ -346,6 +545,9 @@ function renderStatus() {
   });
 }
 
+// ============================================================
+// レンダリング：試合タブ
+// ============================================================
 function renderCourtTypes() {
   const container = document.getElementById('court-type-list');
   container.innerHTML = '';
@@ -381,8 +583,8 @@ function renderPreference() {
 }
 
 function updateSettings() {
-  const eligible = getEligiblePlayers().length;
-  const needed   = totalPlayersNeeded();
+  const eligible    = getEligiblePlayers().length;
+  const needed      = totalPlayersNeeded();
   const generateBtn = document.getElementById('generate-btn');
   const hint        = document.getElementById('generate-hint');
   const minusBtn    = document.getElementById('court-minus');
@@ -393,6 +595,9 @@ function updateSettings() {
   minusBtn.disabled = courtTypes.length <= 1;
   plusBtn.disabled  = !canAddCourt();
 
+  // 案B: ボタンは1つで、組み合わせが出ているかどうかでラベルが変わる
+  generateBtn.textContent = pendingRound ? 'もう一度シャッフル' : '組み合わせ作成';
+
   if (eligible < 2) {
     generateBtn.disabled = true;
     hint.textContent = `あと ${2 - eligible} 人参加（または休憩解除）で作成できます`;
@@ -401,7 +606,9 @@ function updateSettings() {
     hint.textContent = `選手が足りません（必要: ${needed}人 / 対象: ${eligible}人）`;
   } else {
     generateBtn.disabled = false;
-    hint.textContent = `${eligible} 人対象 / ${courtTypes.length} コート`;
+    hint.textContent = pendingRound
+      ? '試合をしたら「確定」、しなければ「取り消し」を押してください'
+      : `${eligible} 人対象 / ${courtTypes.length} コート`;
   }
 
   renderCourtTypes();
@@ -412,15 +619,22 @@ function playerHtml(player) {
   return `<div class="pair-player${gc ? ' ' + gc : ''}">${escapeHtml(player.name)}</div>`;
 }
 
-function renderMatches(result) {
+function renderMatches() {
   const section         = document.getElementById('matches-section');
   const courtsContainer = document.getElementById('courts-container');
   const restContainer   = document.getElementById('rest-container');
+  const confirmRow      = document.getElementById('confirm-row');
+
+  if (!pendingRound) {
+    section.hidden    = true;
+    confirmRow.hidden = true;
+    return;
+  }
 
   courtsContainer.innerHTML = '';
   restContainer.innerHTML   = '';
 
-  result.courts.forEach((court, i) => {
+  pendingRound.courts.forEach((court, i) => {
     const card = document.createElement('div');
     card.className = 'court-card';
 
@@ -449,63 +663,177 @@ function renderMatches(result) {
         </div>
       `;
     }
-
     courtsContainer.appendChild(card);
   });
 
-  if (result.waiting.length > 0) {
+  const chipBlock = (title, list, cls) => {
+    if (list.length === 0) return;
     const div = document.createElement('div');
-    div.className = 'rest-block waiting';
+    div.className = `rest-block ${cls}`;
     div.innerHTML = `
-      <div class="rest-block-title">待機 (${result.waiting.length}人)</div>
+      <div class="rest-block-title">${title} (${list.length}人)</div>
       <ul class="rest-chips">
-        ${result.waiting.map(m => {
+        ${list.map(m => {
           const gc = genderClass(m.gender);
           return `<li class="rest-chip${gc ? ' ' + gc : ''}">${escapeHtml(m.name)}</li>`;
         }).join('')}
       </ul>
     `;
     restContainer.appendChild(div);
-  }
+  };
 
-  if (result.resting.length > 0) {
-    const div = document.createElement('div');
-    div.className = 'rest-block hoping';
-    div.innerHTML = `
-      <div class="rest-block-title">希望休憩 (${result.resting.length}人)</div>
-      <ul class="rest-chips">
-        ${result.resting.map(m => {
-          const gc = genderClass(m.gender);
-          return `<li class="rest-chip${gc ? ' ' + gc : ''}">${escapeHtml(m.name)}</li>`;
-        }).join('')}
-      </ul>
+  chipBlock('待機', pendingRound.waiting, 'waiting');
+  chipBlock('希望休憩', pendingRound.resting, 'hoping');
+
+  section.hidden    = false;
+  confirmRow.hidden = false;
+}
+
+// ============================================================
+// レンダリング：記録タブ
+// ============================================================
+function renderCounts() {
+  const list   = document.getElementById('count-list');
+  const empty  = document.getElementById('count-empty');
+  const badge  = document.getElementById('today-badge');
+  const counts = getMatchCounts();
+  const shown  = getActiveMembers();
+  const session = getCurrentSession();
+  const total   = session ? session.rounds.length : 0;
+
+  list.innerHTML = '';
+  badge.textContent = `${total} ラウンド`;
+  badge.hidden = total === 0;
+
+  if (shown.length === 0 || total === 0) {
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  // 試合数が少ない順＝次に出やすい順。最少の人は色を変えて分かるようにする
+  const sorted = [...shown].sort((a, b) => (counts[a.id] || 0) - (counts[b.id] || 0));
+  const min    = counts[sorted[0].id] || 0;
+
+  sorted.forEach(m => {
+    const n  = counts[m.id] || 0;
+    const gc = genderClass(m.gender);
+    const li = document.createElement('li');
+    li.className = `count-item${gc ? ' ' + gc : ''}${n === min ? ' count-min' : ''}`;
+    li.innerHTML = `
+      <span class="count-name">${escapeHtml(m.name)}</span>
+      <span class="count-value">${n} 試合</span>
     `;
-    restContainer.appendChild(div);
-  }
+    list.appendChild(li);
+  });
+}
 
-  section.hidden = false;
-  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+function renderHistory() {
+  const container = document.getElementById('history-list');
+  const empty     = document.getElementById('history-empty');
+  const session   = getCurrentSession();
+
+  container.innerHTML = '';
+
+  if (!session || session.rounds.length === 0) {
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  // 新しいものを上に出す。削除するときは元の配列の位置が要るので index を持たせる
+  session.rounds.forEach((round, index) => {
+    const div = document.createElement('div');
+    div.className = 'history-round';
+
+    const lines = (round.courts || []).map((c, i) => {
+      const tag  = c.type === 'singles' ? 'シングル' : 'ダブルス';
+      const text = c.type === 'singles'
+        ? `${nameOf(c.player1, session.names)} vs ${nameOf(c.player2, session.names)}`
+        : `${c.pair1.map(id => nameOf(id, session.names)).join('・')} vs ${c.pair2.map(id => nameOf(id, session.names)).join('・')}`;
+      return `<div class="history-line">
+        <span class="history-court-tag">${escapeHtml(tag)}</span>${escapeHtml(`コート${i + 1}　${text}`)}
+      </div>`;
+    }).join('');
+
+    div.innerHTML = `
+      <div class="history-head">
+        <span class="history-title">${escapeHtml(formatTime(round.at))} の試合</span>
+        <button class="delete-btn" data-action="delete-round" data-index="${index}"
+                aria-label="この試合の記録を削除">✕</button>
+      </div>
+      ${lines}
+    `;
+    container.prepend(div);
+  });
+}
+
+function renderPast() {
+  const list  = document.getElementById('past-list');
+  const empty = document.getElementById('past-empty');
+  const past  = sessions.filter(s => s.date !== todayKey());
+
+  list.innerHTML = '';
+
+  if (past.length === 0) {
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  [...past].reverse().forEach(s => {
+    const li = document.createElement('li');
+    li.className = 'past-item';
+    li.innerHTML = `
+      <span class="past-date">${escapeHtml(s.date)}</span>
+      <span class="past-count">${s.rounds.length} ラウンド</span>
+    `;
+    list.appendChild(li);
+  });
+}
+
+function renderLog() {
+  renderCounts();
+  renderHistory();
+  renderPast();
 }
 
 function renderAll() {
   renderRoster();
   renderStatus();
   updateSettings();
+  renderMatches();
+  if (activeTab === 'log') renderLog();
 }
 
 // ============================================================
-// 削除確認ダイアログ
+// 記録の書き出し
 // ============================================================
-let pendingDeleteId = null;
+function exportSessions() {
+  try {
+    const data = JSON.stringify({ exportedAt: new Date().toISOString(), members, sessions }, null, 2);
+    const url  = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `badminton-log-${todayKey()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch {}
+}
 
-function showDeleteDialog(id, name) {
-  pendingDeleteId = id;
-  document.getElementById('dialog-message').textContent = `「${name}」を削除しますか？`;
+// ============================================================
+// 確認ダイアログ（メンバー削除・記録削除で共用）
+// ============================================================
+let confirmAction = null;
+
+function showConfirm(message, onOk) {
+  confirmAction = onOk;
+  document.getElementById('dialog-message').textContent = message;
   document.getElementById('dialog-overlay').hidden = false;
 }
 
-function hideDeleteDialog() {
-  pendingDeleteId = null;
+function hideConfirm() {
+  confirmAction = null;
   document.getElementById('dialog-overlay').hidden = true;
 }
 
@@ -513,6 +841,12 @@ function hideDeleteDialog() {
 // イベントバインド
 // ============================================================
 function setupEvents() {
+
+  // ---- タブ ----
+  document.querySelector('.tab-bar').addEventListener('click', e => {
+    const btn = e.target.closest('.tab-btn');
+    if (btn) switchTab(btn.dataset.tab);
+  });
 
   // ---- メンバー追加 ----
   const memberInput = document.getElementById('member-input');
@@ -542,14 +876,18 @@ function setupEvents() {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     if (btn.dataset.action === 'delete') {
-      showDeleteDialog(btn.dataset.id, btn.dataset.name);
+      const id = btn.dataset.id;
+      showConfirm(`「${btn.dataset.name}」を削除しますか？`, () => {
+        deleteMember(id);
+        renderAll();
+      });
     } else if (btn.dataset.action === 'cycle-gender') {
       cycleGender(btn.dataset.id);
       renderAll();
     }
   });
 
-  // ---- ステータス（イベント委譲） ----
+  // ---- 参加者（イベント委譲） ----
   document.getElementById('status-list').addEventListener('change', e => {
     if (e.target.dataset.action === 'toggle-rest') {
       toggleRest(e.target.dataset.id);
@@ -594,36 +932,57 @@ function setupEvents() {
     }
   });
 
-  // ---- 組み合わせ作成（新ラウンド：優先IDを更新） ----
+  // ---- 作成／もう一度シャッフル（同じ操作。記録はされない） ----
   document.getElementById('generate-btn').addEventListener('click', () => {
-    const result = generateMatches(true);
-    renderMatches(result);
+    pendingRound = generateMatches();
+    savePending();
+    updateSettings();
+    renderMatches();
+    document.getElementById('matches-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
-  // ---- もう一度シャッフル（同ラウンド：優先IDを引き継ぐ） ----
-  document.getElementById('reshuffle-btn').addEventListener('click', () => {
-    const result = generateMatches(false);
-    renderMatches(result);
+  // ---- 確定（ここで初めて記録される） ----
+  document.getElementById('confirm-btn').addEventListener('click', () => {
+    confirmPendingRound();
+    renderAll();
   });
 
-  // ---- 削除ダイアログ ----
-  document.getElementById('dialog-cancel').addEventListener('click', hideDeleteDialog);
+  // ---- 取り消し（記録せず破棄） ----
+  document.getElementById('clear-btn').addEventListener('click', () => {
+    clearPendingRound();
+    renderAll();
+  });
+
+  // ---- 記録の削除（イベント委譲） ----
+  document.getElementById('history-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="delete-round"]');
+    if (!btn) return;
+    const index = parseInt(btn.dataset.index, 10);
+    showConfirm('この試合の記録を削除しますか？', () => {
+      deleteRound(index);
+      renderLog();
+    });
+  });
+
+  // ---- 書き出し ----
+  document.getElementById('export-btn').addEventListener('click', exportSessions);
+
+  // ---- 確認ダイアログ ----
+  document.getElementById('dialog-cancel').addEventListener('click', hideConfirm);
 
   document.getElementById('dialog-ok').addEventListener('click', () => {
-    if (pendingDeleteId) {
-      deleteMember(pendingDeleteId);
-      renderAll();
-    }
-    hideDeleteDialog();
+    const action = confirmAction;
+    hideConfirm();
+    if (action) action();
   });
 
   document.getElementById('dialog-overlay').addEventListener('click', e => {
-    if (e.target === document.getElementById('dialog-overlay')) hideDeleteDialog();
+    if (e.target === document.getElementById('dialog-overlay')) hideConfirm();
   });
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !document.getElementById('dialog-overlay').hidden) {
-      hideDeleteDialog();
+      hideConfirm();
     }
   });
 }
@@ -643,4 +1002,5 @@ if ('serviceWorker' in navigator) {
 loadState();
 renderPreference();
 setupEvents();
+switchTab(activeTab);
 renderAll();
