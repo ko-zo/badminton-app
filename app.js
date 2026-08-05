@@ -292,6 +292,11 @@ function canAddCourt() {
   return getEligiblePlayers().length >= totalPlayersNeeded() + 4;
 }
 
+function canGenerate() {
+  const eligible = getEligiblePlayers().length;
+  return eligible >= 2 && totalPlayersNeeded() <= eligible;
+}
+
 // ============================================================
 // 組み合わせアルゴリズム
 // ============================================================
@@ -590,32 +595,48 @@ function renderPreference() {
 }
 
 function updateSettings() {
-  const eligible    = getEligiblePlayers().length;
-  const needed      = totalPlayersNeeded();
-  const generateBtn = document.getElementById('generate-btn');
-  const hint        = document.getElementById('generate-hint');
-  const minusBtn    = document.getElementById('court-minus');
-  const plusBtn     = document.getElementById('court-plus');
-  const display     = document.getElementById('court-display');
+  const eligible     = getEligiblePlayers().length;
+  const needed       = totalPlayersNeeded();
+  const mainBtn      = document.getElementById('main-btn');
+  const reshuffleBtn = document.getElementById('reshuffle-btn');
+  const secondaryRow = document.getElementById('secondary-row');
+  const hint         = document.getElementById('generate-hint');
+  const minusBtn     = document.getElementById('court-minus');
+  const plusBtn      = document.getElementById('court-plus');
+  const display      = document.getElementById('court-display');
+  const ready        = canGenerate();
 
   display.textContent = courtTypes.length;
   minusBtn.disabled = courtTypes.length <= 1;
   plusBtn.disabled  = !canAddCourt();
 
-  // 案B: ボタンは1つで、組み合わせが出ているかどうかでラベルが変わる
-  generateBtn.textContent = pendingRound ? 'もう一度シャッフル' : '組み合わせ作成';
+  secondaryRow.hidden   = !pendingRound;
+  reshuffleBtn.disabled = !ready;
 
-  if (eligible < 2) {
-    generateBtn.disabled = true;
+  // 主ボタンは常に「次にすべきこと」を示す。組み合わせが出ているときは確定が
+  // その位置に来るので、試合後に押したくなる操作がそのまま記録につながる。
+  if (pendingRound) {
+    mainBtn.textContent = ready ? '確定して次の組み合わせへ' : '確定する';
+    mainBtn.classList.remove('mode-generate');
+    mainBtn.classList.add('mode-confirm');
+    mainBtn.disabled = false;   // 次を作れなくても確定だけはできる
+  } else {
+    mainBtn.textContent = '組み合わせ作成';
+    mainBtn.classList.remove('mode-confirm');
+    mainBtn.classList.add('mode-generate');
+    mainBtn.disabled = !ready;
+  }
+
+  if (pendingRound) {
+    hint.textContent = ready
+      ? '試合をしたら上のボタンで確定。していなければ「取り消し」'
+      : `確定はできます（次を作るには 必要: ${needed}人 / 対象: ${eligible}人）`;
+  } else if (eligible < 2) {
     hint.textContent = `あと ${2 - eligible} 人参加（または休憩解除）で作成できます`;
   } else if (needed > eligible) {
-    generateBtn.disabled = true;
     hint.textContent = `選手が足りません（必要: ${needed}人 / 対象: ${eligible}人）`;
   } else {
-    generateBtn.disabled = false;
-    hint.textContent = pendingRound
-      ? '試合をしたら「確定」、しなければ「取り消し」を押してください'
-      : `${eligible} 人対象 / ${courtTypes.length} コート`;
+    hint.textContent = `${eligible} 人対象 / ${courtTypes.length} コート`;
   }
 
   renderCourtTypes();
@@ -630,11 +651,9 @@ function renderMatches() {
   const section         = document.getElementById('matches-section');
   const courtsContainer = document.getElementById('courts-container');
   const restContainer   = document.getElementById('rest-container');
-  const confirmRow      = document.getElementById('confirm-row');
 
   if (!pendingRound) {
-    section.hidden    = true;
-    confirmRow.hidden = true;
+    section.hidden = true;
     return;
   }
 
@@ -692,8 +711,7 @@ function renderMatches() {
   chipBlock('待機', pendingRound.waiting, 'waiting');
   chipBlock('希望休憩', pendingRound.resting, 'hoping');
 
-  section.hidden    = false;
-  confirmRow.hidden = false;
+  section.hidden = false;
 }
 
 // ============================================================
@@ -939,18 +957,24 @@ function setupEvents() {
     }
   });
 
-  // ---- 作成／もう一度シャッフル（同じ操作。記録はされない） ----
-  document.getElementById('generate-btn').addEventListener('click', () => {
-    pendingRound = generateMatches();
-    savePending();
-    updateSettings();
-    renderMatches();
-    document.getElementById('matches-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // ---- 主ボタン: 表示中のものがあれば確定し、続けて次を引く ----
+  document.getElementById('main-btn').addEventListener('click', () => {
+    if (pendingRound) confirmPendingRound();
+    if (canGenerate()) {
+      pendingRound = generateMatches();
+      savePending();
+    }
+    renderAll();
+    if (pendingRound) {
+      document.getElementById('matches-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   });
 
-  // ---- 確定（ここで初めて記録される） ----
-  document.getElementById('confirm-btn').addEventListener('click', () => {
-    confirmPendingRound();
+  // ---- 引き直す（記録せずに引き直すだけ） ----
+  document.getElementById('reshuffle-btn').addEventListener('click', () => {
+    if (!canGenerate()) return;
+    pendingRound = generateMatches();
+    savePending();
     renderAll();
   });
 

@@ -112,12 +112,14 @@
         <div id="rest-container"></div>
       </section>
 
+      <!-- 一番目立つボタンが常に「次にすべきこと」になるように並べている。
+           試合後に押したくなる位置へ確定を置き、引き直しで実績を消す事故を防ぐ。 -->
       <div class="action-area">
-        <button id="generate-btn" class="btn btn-generate" disabled>組み合わせ作成</button>
+        <button id="main-btn" class="btn btn-main mode-generate" disabled>組み合わせ作成</button>
         <p id="generate-hint" class="hint-text" aria-live="polite"></p>
-        <div class="action-row" id="confirm-row" hidden>
+        <div class="action-row" id="secondary-row" hidden>
+          <button id="reshuffle-btn" class="btn btn-secondary">引き直す</button>
           <button id="clear-btn" class="btn btn-secondary">取り消し</button>
-          <button id="confirm-btn" class="btn btn-confirm">この組み合わせで確定</button>
         </div>
       </div>
 

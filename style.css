@@ -181,15 +181,24 @@ body {
   color: var(--text);
 }
 
-.btn-generate {
+/* 主ボタン。状態によって「作成」と「確定」を切り替えるため、色でも意味を変える */
+.btn-main {
   width: 100%;
   min-height: 56px;
-  background: var(--orange);
   color: white;
   font-size: 17px;
   border-radius: 12px;
   margin-top: 6px;
+}
+
+.btn-main.mode-generate {
+  background: var(--orange);
   box-shadow: 0 3px 8px rgba(230, 81, 0, 0.35);
+}
+
+.btn-main.mode-confirm {
+  background: var(--green);
+  box-shadow: 0 3px 8px rgba(46, 125, 50, 0.35);
 }
 
 .btn-danger {
@@ -202,32 +211,24 @@ body {
   margin-top: 16px;
 }
 
-/* 確定は最も押される操作なので大きく目立たせる。取り消しは控えめにして誤操作を防ぐ */
-.btn-confirm {
-  flex: 1;
-  min-height: 56px;
-  background: var(--green);
-  color: white;
-  font-size: 16px;
-  box-shadow: 0 3px 8px rgba(46, 125, 50, 0.35);
-}
-
-/* ---- Action area（作成／シャッフル・確定・取り消し） ---- */
+/* ---- Action area（主ボタン＋補助ボタン） ---- */
 .action-area {
   display: flex;
   flex-direction: column;
 }
 
+/* 引き直す・取り消しは主ボタンより控えめにして、誤って押されないようにする */
 .action-row {
   display: flex;
   gap: 10px;
   margin-top: 4px;
 }
 
-.action-row .btn-secondary {
-  flex: 0 0 auto;
-  padding: 0 16px;
+.action-row .btn {
+  flex: 1;
+  min-height: 44px;
   font-size: 14px;
+  padding: 0 12px;
 }
 
 /* ---- Add member row ---- */
