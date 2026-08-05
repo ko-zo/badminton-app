@@ -135,8 +135,9 @@ function playingCount(available) {
   return count;
 }
 
+// ＋ボタンは常にダブルス（4人）を追加するため、4人分の余裕がなければ増やせない
 function canAddCourt() {
-  return getEligiblePlayers().length >= totalPlayersNeeded() + 2;
+  return getEligiblePlayers().length >= totalPlayersNeeded() + 4;
 }
 
 // ============================================================
