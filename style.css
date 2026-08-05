@@ -113,6 +113,19 @@ body {
   gap: 12px;
 }
 
+/* ---- 保存失敗の警告 ---- */
+.storage-warning {
+  background: #FFF3E0;
+  border: 2px solid var(--orange);
+  border-radius: 10px;
+  color: #7A3E00;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
 /* ---- Card ---- */
 .card {
   background: var(--card);

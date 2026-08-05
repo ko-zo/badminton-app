@@ -5,11 +5,17 @@
 // ============================================================
 const STORAGE_KEY  = 'badminton_v1_members';
 const SETTINGS_KEY = 'badminton_v1_settings';
-const SESSIONS_KEY = 'badminton_v1_sessions';
-const PENDING_KEY  = 'badminton_v1_pending';
 
-// 旧バージョンで使っていた「前回待機者を3倍の重みで優先」用のキー。
-// 試合数ベースの公平化に置き換えたため読み込まず、起動時に掃除する。
+// 対戦記録と未確定の組み合わせは必ず1つのキーへまとめて書く。
+// 別々に書くと片方だけ成功したときに状態が食い違い、
+// 「記録済みなのに未確定が残る」＝二重計上、または
+// 「未確定が消えたのに記録されていない」＝試合の消失が起きるため。
+const LOG_KEY = 'badminton_v1_log';
+
+// 旧バージョンのキー。読み込み時に移行して削除する。
+const LEGACY_SESSIONS_KEY = 'badminton_v1_sessions';
+const LEGACY_PENDING_KEY  = 'badminton_v1_pending';
+// 「前回待機者を3倍の重みで優先」用。試合数ベースの公平化に置き換え済み。
 const LEGACY_PRIORITY_KEY = 'badminton_v1_priority';
 
 const COURT_TYPES = ['doubles', 'singles'];
@@ -39,10 +45,55 @@ let pendingRound    = null;        // 表示中で未確定の組み合わせ（
 // ============================================================
 // ストレージ
 // ============================================================
+
+// 保存に失敗したものを覚えておき、画面に警告として出す。
+// 例外を握りつぶすと「確定したのに保存されていない」状態に気づけないため。
+const failedWrites = new Map(); // key -> 表示用ラベル
+
+function renderStorageWarning() {
+  const el = document.getElementById('storage-warning');
+  if (!el) return;
+  if (failedWrites.size === 0) {
+    el.hidden = true;
+    return;
+  }
+  el.textContent =
+    `${[...failedWrites.values()].join('・')}を保存できませんでした。`
+    + '端末の空き容量やブラウザの設定を確認してください。'
+    + 'このままアプリを閉じると、この内容は失われます。';
+  el.hidden = false;
+}
+
+function writeStore(key, value, label) {
+  try {
+    localStorage.setItem(key, value);
+    failedWrites.delete(key);
+    renderStorageWarning();
+    return true;
+  } catch {
+    failedWrites.set(key, label);
+    renderStorageWarning();
+    return false;
+  }
+}
+
+// 壊れた値が入っていても落ちないよう、読み込み時に構造を検証する
+function sanitizeSessions(parsed) {
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter(s => s && typeof s.date === 'string' && Array.isArray(s.rounds))
+    .map(s => ({
+      date:   s.date,
+      names:  (s.names && typeof s.names === 'object') ? s.names : {},
+      rounds: s.rounds.filter(r => r && Array.isArray(r.courts)),
+    }));
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) members = JSON.parse(raw);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed)) members = parsed.filter(m => m && typeof m.id === 'string');
   } catch { members = []; }
 
   try {
@@ -56,52 +107,73 @@ function loadState() {
     }
   } catch {}
 
-  try {
-    const raw = localStorage.getItem(SESSIONS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) sessions = parsed.filter(s => s && typeof s.date === 'string');
-    }
-  } catch {}
-
-  try {
-    const raw = localStorage.getItem(PENDING_KEY);
-    if (raw) {
-      const p = JSON.parse(raw);
-      // 日付が変わっていたら前日の未確定分は捨てる
-      if (p && p.date === todayKey() && Array.isArray(p.courts)) pendingRound = hydrateRound(p);
-    }
-  } catch {}
+  loadLog();
 
   try { localStorage.removeItem(LEGACY_PRIORITY_KEY); } catch {}
 }
 
+function loadLog() {
+  let sessionsRaw = null;
+  let pendingRaw  = null;
+
+  try {
+    const raw = localStorage.getItem(LOG_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        sessionsRaw = parsed.sessions;
+        pendingRaw  = parsed.pending;
+      }
+    }
+  } catch {}
+
+  // 旧バージョン（別キー保存）からの移行
+  let migrated = false;
+  if (sessionsRaw === null && pendingRaw === null) {
+    try {
+      const rawSessions = localStorage.getItem(LEGACY_SESSIONS_KEY);
+      if (rawSessions) { sessionsRaw = JSON.parse(rawSessions); migrated = true; }
+    } catch {}
+    try {
+      const rawPending = localStorage.getItem(LEGACY_PENDING_KEY);
+      if (rawPending) { pendingRaw = JSON.parse(rawPending); migrated = true; }
+    } catch {}
+  }
+
+  sessions = sanitizeSessions(sessionsRaw);
+
+  // 日付が変わっていたら前日の未確定分は捨てる
+  if (pendingRaw && pendingRaw.date === todayKey() && Array.isArray(pendingRaw.courts)) {
+    pendingRound = hydrateRound(pendingRaw);
+  }
+
+  if (migrated && saveLog()) {
+    try {
+      localStorage.removeItem(LEGACY_SESSIONS_KEY);
+      localStorage.removeItem(LEGACY_PENDING_KEY);
+    } catch {}
+  }
+}
+
 function saveState() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(members)); } catch {}
+  return writeStore(STORAGE_KEY, JSON.stringify(members), 'メンバー');
 }
 
 function saveSettings() {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-      courtTypes,
-      matchPreference,
-      activeTab,
-    }));
-  } catch {}
+  return writeStore(SETTINGS_KEY, JSON.stringify({
+    courtTypes,
+    matchPreference,
+    activeTab,
+  }), '設定');
 }
 
-function saveSessions() {
-  try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); } catch {}
-}
-
-function savePending() {
-  try {
-    if (pendingRound) {
-      localStorage.setItem(PENDING_KEY, JSON.stringify({ date: todayKey(), ...serializeRound(pendingRound) }));
-    } else {
-      localStorage.removeItem(PENDING_KEY);
-    }
-  } catch {}
+// 対戦記録と未確定の組み合わせを1回の書き込みで保存する
+function saveLog() {
+  const payload = JSON.stringify({
+    sessions,
+    pending: pendingRound ? { date: todayKey(), ...serializeRound(pendingRound) } : null,
+  });
+  return writeStore(LOG_KEY, payload, '対戦記録');
 }
 
 // ============================================================
@@ -195,27 +267,46 @@ function hydrateRound(record) {
   };
 }
 
+// 保存できなかった場合はメモリ上の変更も巻き戻す。
+// 「確定したように見えるのに保存されていない」状態を作らないため。
 function confirmPendingRound() {
-  if (!pendingRound) return;
-  const session = getOrCreateCurrentSession();
+  if (!pendingRound) return true;
+
+  const existed     = !!getCurrentSession();
+  const session     = getOrCreateCurrentSession();
+  const roundsCount = session.rounds.length;
+  const namesBackup = { ...session.names };
+  const saved       = pendingRound;
+
   // 名前を控えておくと、あとでメンバーを削除しても履歴が読める
   members.forEach(m => { session.names[m.id] = m.name; });
   session.rounds.push({ at: Date.now(), ...serializeRound(pendingRound) });
-  saveSessions();
   pendingRound = null;
-  savePending();
+
+  if (saveLog()) return true;
+
+  session.rounds.length = roundsCount;
+  session.names         = namesBackup;
+  if (!existed) sessions = sessions.filter(s => s !== session);
+  pendingRound = saved;
+  return false;
 }
 
 function clearPendingRound() {
+  const saved = pendingRound;
   pendingRound = null;
-  savePending();
+  if (saveLog()) return true;
+  pendingRound = saved;
+  return false;
 }
 
 function deleteRound(index) {
   const session = getCurrentSession();
-  if (!session || index < 0 || index >= session.rounds.length) return;
-  session.rounds.splice(index, 1);
-  saveSessions();
+  if (!session || index < 0 || index >= session.rounds.length) return false;
+  const removed = session.rounds.splice(index, 1);
+  if (saveLog()) return true;
+  session.rounds.splice(index, 0, ...removed);
+  return false;
 }
 
 // そのラウンドで実際にコートに立った人のID
@@ -959,10 +1050,14 @@ function setupEvents() {
 
   // ---- 主ボタン: 表示中のものがあれば確定し、続けて次を引く ----
   document.getElementById('main-btn').addEventListener('click', () => {
-    if (pendingRound) confirmPendingRound();
+    // 確定に失敗した場合は次を引かない（未確定のまま残して気づけるようにする）
+    if (pendingRound && !confirmPendingRound()) {
+      renderAll();
+      return;
+    }
     if (canGenerate()) {
       pendingRound = generateMatches();
-      savePending();
+      saveLog();
     }
     renderAll();
     if (pendingRound) {
@@ -974,7 +1069,7 @@ function setupEvents() {
   document.getElementById('reshuffle-btn').addEventListener('click', () => {
     if (!canGenerate()) return;
     pendingRound = generateMatches();
-    savePending();
+    saveLog();
     renderAll();
   });
 
