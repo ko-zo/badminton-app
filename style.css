@@ -296,6 +296,58 @@ body {
   padding: 14px 0 4px;
 }
 
+/* ---- 本日の参加者チップ（タップで休憩の切り替え） ---- */
+/* 試合中に頻繁に触るので、一覧ではなくチップにして縦の場所を取らないようにしている */
+.player-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.player-chip {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 2px solid var(--border);
+  border-radius: 20px;
+  background: white;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.player-chip:active { transform: scale(0.96); }
+
+.player-chip.gender-m {
+  background: var(--male-bg);
+  border-color: var(--male-border);
+  color: var(--male-text);
+}
+
+.player-chip.gender-f {
+  background: var(--female-bg);
+  border-color: var(--female-border);
+  color: var(--female-text);
+}
+
+/* 休憩中は打ち消し線で「抽選対象から外れている」ことを示す */
+.player-chip.resting {
+  background: #F5F5F5;
+  border-color: var(--border);
+  color: #9E9E9E;
+  text-decoration: line-through;
+}
+
+.chip-hint {
+  font-size: 12px;
+  color: var(--text-sub);
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
 /* ---- 性別ボタン ---- */
 .gender-btn {
   width: 34px;
@@ -395,27 +447,6 @@ body {
 .delete-btn:focus-visible {
   color: var(--red);
   background: #FFEBEE;
-}
-
-/* ---- Rest checkbox ---- */
-.rest-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-sub);
-  cursor: pointer;
-  flex-shrink: 0;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.rest-label input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
-  cursor: pointer;
-  accent-color: var(--orange);
-  flex-shrink: 0;
 }
 
 /* ---- Court controls ---- */

@@ -55,19 +55,22 @@
         <p id="roster-empty" class="empty-text">メンバーが登録されていません</p>
       </section>
 
-      <section class="card">
-        <h2 class="section-title">
-          今回の参加者
-          <span class="badge" id="status-badge" hidden></span>
-        </h2>
-        <ul id="status-list" class="member-list" aria-label="参加者一覧"></ul>
-        <p id="status-empty" class="empty-text">参加者がいません</p>
-      </section>
-
     </div>
 
     <!-- ============ 試合タブ ============ -->
     <div class="tab-panel" id="panel-match" role="tabpanel" aria-labelledby="tab-match" hidden>
+
+      <section class="card">
+        <h2 class="section-title">
+          本日の参加者
+          <span class="badge" id="status-badge" hidden></span>
+        </h2>
+        <div id="status-list" class="player-chips" role="group" aria-label="本日の参加者"></div>
+        <p id="status-empty" class="empty-text">
+          参加者がいません。メンバータブで「今回参加する」をONにしてください
+        </p>
+        <p id="status-hint" class="chip-hint" aria-live="polite"></p>
+      </section>
 
       <section class="card" id="settings-section">
         <h2 class="section-title">設定</h2>

@@ -512,10 +512,13 @@ function renderRoster() {
   });
 }
 
+// 本日の参加者はチップで表示し、タップで休憩を切り替える。
+// 試合中に何度も触る操作なので、試合タブの一番上に置いて縦幅も抑えている。
 function renderStatus() {
   const list   = document.getElementById('status-list');
   const empty  = document.getElementById('status-empty');
   const badge  = document.getElementById('status-badge');
+  const hint   = document.getElementById('status-hint');
   const active = getActiveMembers();
 
   list.innerHTML = '';
@@ -523,6 +526,7 @@ function renderStatus() {
   if (active.length === 0) {
     empty.hidden = false;
     badge.hidden = true;
+    hint.textContent = '';
     return;
   }
 
@@ -531,18 +535,21 @@ function renderStatus() {
   badge.hidden = false;
 
   active.forEach(m => {
-    const gc = genderClass(m.gender);
-    const li = document.createElement('li');
-    li.className = `member-item${gc ? ' ' + gc : ''}`;
-    li.innerHTML = `
-      <span class="member-name">${escapeHtml(m.name)}</span>
-      <label class="rest-label">
-        <input type="checkbox" data-action="toggle-rest" data-id="${escapeHtml(m.id)}"${m.rest ? ' checked' : ''}>
-        休憩希望
-      </label>
-    `;
-    list.appendChild(li);
+    const gc  = genderClass(m.gender);
+    const btn = document.createElement('button');
+    btn.className     = `player-chip${gc ? ' ' + gc : ''}${m.rest ? ' resting' : ''}`;
+    btn.dataset.action = 'toggle-rest';
+    btn.dataset.id     = m.id;
+    btn.textContent    = m.name;
+    btn.setAttribute('aria-pressed', m.rest ? 'true' : 'false');
+    btn.setAttribute('aria-label', `${m.name}：${m.rest ? '休憩中。タップで復帰' : '参加中。タップで休憩'}`);
+    list.appendChild(btn);
   });
+
+  const resting = getRestPlayers().length;
+  hint.textContent = resting > 0
+    ? `タップで休憩の切り替え　／　休憩中 ${resting} 人・抽選対象 ${active.length - resting} 人`
+    : 'タップで休憩の切り替え';
 }
 
 // ============================================================
@@ -887,12 +894,12 @@ function setupEvents() {
     }
   });
 
-  // ---- 参加者（イベント委譲） ----
-  document.getElementById('status-list').addEventListener('change', e => {
-    if (e.target.dataset.action === 'toggle-rest') {
-      toggleRest(e.target.dataset.id);
-      renderAll();
-    }
+  // ---- 本日の参加者チップ（イベント委譲） ----
+  document.getElementById('status-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="toggle-rest"]');
+    if (!btn) return;
+    toggleRest(btn.dataset.id);
+    renderAll();
   });
 
   // ---- コート数 ± ----
