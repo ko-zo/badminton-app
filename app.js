@@ -41,6 +41,8 @@ let matchPreference = 'random';    // 'random' | 'mixed' | 'same-gender'
 let activeTab       = 'members';
 let sessions        = [];          // [{ date, names: {id:name}, rounds: [...] }]
 let pendingRound    = null;        // 表示中で未確定の組み合わせ（確定するまで記録されない）
+let orphanRound     = null;        // 日をまたいで確定し忘れたまま残っていた組み合わせ
+let orphanDate      = null;        // orphanRound がどの日のものか
 let expandedPastDate = null;       // 記録タブで開いている過去セッションの日付
 
 // ============================================================
@@ -143,9 +145,16 @@ function loadLog() {
 
   sessions = sanitizeSessions(sessionsRaw);
 
-  // 日付が変わっていたら前日の未確定分は捨てる
-  if (pendingRaw && pendingRaw.date === todayKey() && Array.isArray(pendingRaw.courts)) {
-    pendingRound = hydrateRound(pendingRaw);
+  // 日付が変わる前と同じ日ならそのまま復元。日付が変わっていたら、
+  // 「最後の試合を確定し忘れて閉じた」可能性があるため捨てずに orphanRound へ retain し、
+  // 起動後に記録するかどうかを尋ねる（黙って破棄すると気づけないため）
+  if (pendingRaw && Array.isArray(pendingRaw.courts) && typeof pendingRaw.date === 'string') {
+    if (pendingRaw.date === todayKey()) {
+      pendingRound = hydrateRound(pendingRaw);
+    } else {
+      orphanRound = hydrateRound(pendingRaw);
+      orphanDate  = pendingRaw.date;
+    }
   }
 
   if (migrated && saveLog()) {
@@ -231,21 +240,24 @@ function todayKey() {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-// 公平性の計算は「当日のセッション」だけを見る。
-// 日が変わればメンバーも変わるため、過去日と混ぜると不公平になる。
-function getCurrentSession() {
-  return sessions.find(s => s.date === todayKey()) || null;
+function getSessionForDate(date) {
+  return sessions.find(s => s.date === date) || null;
 }
 
-function getOrCreateCurrentSession() {
-  let s = getCurrentSession();
+function getOrCreateSessionForDate(date) {
+  let s = getSessionForDate(date);
   if (!s) {
-    s = { date: todayKey(), names: {}, rounds: [] };
+    s = { date, names: {}, rounds: [] };
     sessions.push(s);
     if (sessions.length > MAX_SESSIONS) sessions = sessions.slice(-MAX_SESSIONS);
   }
   return s;
 }
+
+// 公平性の計算は「当日のセッション」だけを見る。
+// 日が変わればメンバーも変わるため、過去日と混ぜると不公平になる。
+function getCurrentSession()          { return getSessionForDate(todayKey()); }
+function getOrCreateCurrentSession()  { return getOrCreateSessionForDate(todayKey()); }
 
 function serializeRound(round) {
   return {
@@ -268,28 +280,57 @@ function hydrateRound(record) {
   };
 }
 
-// 保存できなかった場合はメモリ上の変更も巻き戻す。
-// 「確定したように見えるのに保存されていない」状態を作らないため。
-function confirmPendingRound() {
-  if (!pendingRound) return true;
-
-  const existed     = !!getCurrentSession();
-  const session     = getOrCreateCurrentSession();
+// 指定した日付のセッションへ1ラウンドを記録する。保存できなかった場合は
+// メモリ上の変更も巻き戻す。「確定したように見えるのに保存されていない」状態を作らないため。
+function commitRoundToDate(date, round) {
+  const existed     = !!getSessionForDate(date);
+  const session     = getOrCreateSessionForDate(date);
   const roundsCount = session.rounds.length;
   const namesBackup = { ...session.names };
-  const saved       = pendingRound;
 
   // 名前を控えておくと、あとでメンバーを削除しても履歴が読める
   members.forEach(m => { session.names[m.id] = m.name; });
-  session.rounds.push({ at: Date.now(), ...serializeRound(pendingRound) });
-  pendingRound = null;
+  session.rounds.push({ at: Date.now(), ...serializeRound(round) });
 
   if (saveLog()) return true;
 
   session.rounds.length = roundsCount;
   session.names         = namesBackup;
   if (!existed) sessions = sessions.filter(s => s !== session);
+  return false;
+}
+
+function confirmPendingRound() {
+  if (!pendingRound) return true;
+  const saved  = pendingRound;
+  pendingRound = null;
+  if (commitRoundToDate(todayKey(), saved)) return true;
   pendingRound = saved;
+  return false;
+}
+
+// 日をまたいで確定し忘れたまま残っていた組み合わせを、その日の記録として残す
+function confirmOrphanRound() {
+  if (!orphanRound || !orphanDate) return true;
+  const saved = orphanRound;
+  const date  = orphanDate;
+  orphanRound = null;
+  orphanDate  = null;
+  if (commitRoundToDate(date, saved)) return true;
+  orphanRound = saved;
+  orphanDate  = date;
+  return false;
+}
+
+// 日をまたいで残っていた組み合わせを、記録せずに破棄する
+function discardOrphanRound() {
+  const saved = orphanRound;
+  const date  = orphanDate;
+  orphanRound = null;
+  orphanDate  = null;
+  if (saveLog()) return true;
+  orphanRound = saved;
+  orphanDate  = date;
   return false;
 }
 
@@ -363,6 +404,32 @@ function getPairHistory() {
 function getActiveMembers()   { return members.filter(m => m.active); }
 function getEligiblePlayers() { return members.filter(m => m.active && !m.rest); }
 function getRestPlayers()     { return members.filter(m => m.active && m.rest); }
+
+// 遅刻して途中から参加した人を、参加した時点から公平に扱うための試合数。
+// 素の試合数のまま比較すると、他の人が試合を重ねた後に加わった人は
+// ずっと「試合数最少」のままになり、追いつくまで優先的に出場し続けてしまう
+// （＝待機・休憩がその分だけ他の人に偏る）。
+// このセッションでまだ一度もプール（出場・待機・休憩のいずれか）に
+// 現れたことがない人だけ、基準値として確定済みラウンド数を使う。
+// 一度でも現れれば、以降は素の試合数の差だけで自然に公平になるため調整は不要。
+function getFairnessCounts() {
+  const counts  = getMatchCounts();
+  const session = getCurrentSession();
+  const rounds  = session ? session.rounds : [];
+
+  const appeared = new Set();
+  rounds.forEach(r => {
+    playersInRound(r).forEach(id => appeared.add(id));
+    (r.waiting || []).forEach(id => appeared.add(id));
+    (r.resting || []).forEach(id => appeared.add(id));
+  });
+
+  const fair = {};
+  getEligiblePlayers().forEach(m => {
+    fair[m.id] = appeared.has(m.id) ? (counts[m.id] || 0) : rounds.length;
+  });
+  return fair;
+}
 
 function totalPlayersNeeded() {
   return courtTypes.reduce((sum, t) => sum + (t === 'singles' ? 2 : 4), 0);
@@ -489,9 +556,11 @@ function buildCourts(players) {
 function generateMatches() {
   const eligible = getEligiblePlayers();
   const resting  = getRestPlayers();
-  const counts   = getMatchCounts();
+  const counts   = getFairnessCounts();
 
   // 誰が出るか: 当日の試合数が少ない人から順に選ぶ（同数の中はランダム）。
+  // 途中から参加した人は合流時点を基準に数えるため、素の試合数ではなく
+  // getFairnessCounts() の調整済みの値を使う。
   // 先にシャッフルしてから安定ソートすることで、同数グループの順序がランダムになる。
   const ordered = shuffleArray(eligible)
     .sort((a, b) => (counts[a.id] || 0) - (counts[b.id] || 0));
@@ -982,19 +1051,48 @@ function exportSessions() {
 }
 
 // ============================================================
-// 確認ダイアログ（メンバー削除・記録削除で共用）
+// 確認ダイアログ（メンバー削除・記録削除・確定し忘れの復元で共用）
 // ============================================================
 let confirmAction = null;
+let cancelAction  = null;
 
-function showConfirm(message, onOk) {
+// okLabel/okClass で見た目を変えられる（既定は削除用の赤ボタン）。
+// onCancel を渡すと、キャンセル・背景クリック・Escape でも黙って閉じずに
+// 明示的な選択として扱える（確定し忘れの復元で「破棄する」を選ばせるのに使う）
+function showConfirm(message, onOk, { okLabel = '削除', okClass = 'btn-danger', onCancel = null } = {}) {
   confirmAction = onOk;
+  cancelAction  = onCancel;
   document.getElementById('dialog-message').textContent = message;
+  const okBtn = document.getElementById('dialog-ok');
+  okBtn.textContent = okLabel;
+  okBtn.classList.remove('btn-danger', 'btn-primary');
+  okBtn.classList.add(okClass);
   document.getElementById('dialog-overlay').hidden = false;
 }
 
-function hideConfirm() {
+function hideConfirm({ runCancel = false } = {}) {
+  const onCancel = cancelAction;
   confirmAction = null;
+  cancelAction  = null;
   document.getElementById('dialog-overlay').hidden = true;
+  if (runCancel && onCancel) onCancel();
+}
+
+// 起動時、確定し忘れて日をまたいだ組み合わせが見つかったら記録するか尋ねる。
+// 黙って捨てると「最後の試合が記録されていない」ことに気づけないため、
+// 必ず「記録する」か「破棄する」のどちらかを選ばせる（キャンセル・背景クリック・Escapeも破棄扱い）
+function showOrphanRoundPrompt() {
+  if (!orphanRound || !orphanDate) return;
+  const courtCount = orphanRound.courts.length;
+  showConfirm(
+    `前回（${formatDate(orphanDate)}）に確定し忘れた組み合わせ（コート${courtCount}面分）が残っています。その日の記録として残しますか？`,
+    () => { confirmOrphanRound(); renderAll(); },
+    {
+      okLabel:  '記録する',
+      okClass:  'btn-primary',
+      onCancel: () => { discardOrphanRound(); renderAll(); },
+    }
+  );
 }
 
 // ============================================================
@@ -1146,7 +1244,7 @@ function setupEvents() {
   document.getElementById('export-btn').addEventListener('click', exportSessions);
 
   // ---- 確認ダイアログ ----
-  document.getElementById('dialog-cancel').addEventListener('click', hideConfirm);
+  document.getElementById('dialog-cancel').addEventListener('click', () => hideConfirm({ runCancel: true }));
 
   document.getElementById('dialog-ok').addEventListener('click', () => {
     const action = confirmAction;
@@ -1155,12 +1253,12 @@ function setupEvents() {
   });
 
   document.getElementById('dialog-overlay').addEventListener('click', e => {
-    if (e.target === document.getElementById('dialog-overlay')) hideConfirm();
+    if (e.target === document.getElementById('dialog-overlay')) hideConfirm({ runCancel: true });
   });
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !document.getElementById('dialog-overlay').hidden) {
-      hideConfirm();
+      hideConfirm({ runCancel: true });
     }
   });
 }
@@ -1182,3 +1280,4 @@ renderPreference();
 setupEvents();
 switchTab(activeTab);
 renderAll();
+showOrphanRoundPrompt();
