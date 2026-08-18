@@ -18,6 +18,7 @@
   <div class="app-top">
     <header class="app-header">
       <h1 class="app-title">バドミントン組み合わせ</h1>
+      <span class="app-version" id="app-version"></span>
     </header>
 
     <nav class="tab-bar" role="tablist" aria-label="画面切り替え">
@@ -153,6 +154,12 @@
         <p id="past-hint" class="chip-hint" hidden>日付をタップすると、その日の対戦内容を表示します</p>
         <p id="past-empty" class="empty-text">過去の記録はありません</p>
         <button id="export-btn" class="btn btn-secondary btn-full">記録をファイルに書き出す</button>
+      </section>
+
+      <section class="card">
+        <h2 class="section-title">改修履歴</h2>
+        <ul id="changelog-list" class="past-list" aria-label="改修履歴一覧"></ul>
+        <p class="chip-hint">バージョンをタップすると変更内容を表示します</p>
       </section>
 
     </div>

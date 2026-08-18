@@ -25,6 +25,48 @@ const TABS        = ['members', 'match', 'log'];
 const MAX_SESSIONS   = 100; // 保持する練習会の数（1回あたり約5KBなので上限5MBに対して十分小さい）
 const ARRANGE_TRIES  = 200; // 組み方の候補を何通り試すか
 
+// 改修履歴。更新を出すたびに先頭へ追記する（バージョンは先頭の値がそのまま使われる）。
+// 更新が実際に届いたかどうかを画面で確認できるようにするためのもの。
+const CHANGELOG = [
+  {
+    version: '2026.08.19',
+    notes: [
+      '途中から参加した人を、合流した時点を基準に公平に扱うよう修正',
+      '最後の試合を確定し忘れて閉じても、次に開いたときに記録するか選べるように',
+      'バージョン番号と改修履歴を表示できるように',
+    ],
+  },
+  {
+    version: '2026.08.06',
+    notes: [
+      '本日の参加者をチップ表示にし、タップで休憩を切り替えられるように',
+      '一番大きいボタンを「次にすべきこと」に固定し、記録忘れを防止',
+      '保存の失敗を検知して警告を表示するように',
+      '過去の記録を画面上で展開して読めるように、文字の拡大縮小も許可',
+      'アプリの更新が次に開いたときに確実に届くよう修正',
+    ],
+  },
+  {
+    version: '2026.08.05',
+    notes: [
+      'タブ構成（メンバー／試合／記録）にリニューアル',
+      '対戦履歴の記録と、試合数ベースの公平な組み合わせを追加',
+      '性別未設定の人が待機に偏っていた不具合を修正',
+    ],
+  },
+  {
+    version: '2026.04.26',
+    notes: [
+      '性別の入力、コートごとのシングル/ダブルス設定、組み合わせ優先設定を追加',
+    ],
+  },
+  {
+    version: '2026.04.12',
+    notes: ['初回リリース'],
+  },
+];
+const APP_VERSION = CHANGELOG[0].version;
+
 // 組み方スコアの重み（小さいほど良い組み合わせ）
 const W_PAIR   = 3;   // 同じペアの再結成
 const W_OPP    = 1;   // 同じ対戦の再戦
@@ -44,6 +86,7 @@ let pendingRound    = null;        // 表示中で未確定の組み合わせ（
 let orphanRound     = null;        // 日をまたいで確定し忘れたまま残っていた組み合わせ
 let orphanDate      = null;        // orphanRound がどの日のものか
 let expandedPastDate = null;       // 記録タブで開いている過去セッションの日付
+let expandedChangelogVersion = null; // 記録タブで開いている改修履歴のバージョン
 
 // ============================================================
 // ストレージ
@@ -1021,10 +1064,33 @@ function renderPast() {
   });
 }
 
+// 改修履歴。バージョンをタップすると変更内容を展開する（過去の記録と同じ操作感）
+function renderChangelog() {
+  const list = document.getElementById('changelog-list');
+  list.innerHTML = '';
+
+  CHANGELOG.forEach(entry => {
+    const open = expandedChangelogVersion === entry.version;
+    const li = document.createElement('li');
+    li.className = 'past-item';
+    li.innerHTML = `
+      <button class="past-head" data-action="toggle-changelog" data-version="${escapeHtml(entry.version)}"
+              aria-expanded="${open ? 'true' : 'false'}">
+        <span class="past-arrow">${open ? '▼' : '▶'}</span>
+        <span class="past-date">v${escapeHtml(entry.version)}</span>
+        <span class="past-count">${entry.notes.length}件</span>
+      </button>
+      ${open ? `<ul class="changelog-notes">${entry.notes.map(n => `<li>${escapeHtml(n)}</li>`).join('')}</ul>` : ''}
+    `;
+    list.appendChild(li);
+  });
+}
+
 function renderLog() {
   renderCounts();
   renderHistory();
   renderPast();
+  renderChangelog();
 }
 
 function renderAll() {
@@ -1243,6 +1309,14 @@ function setupEvents() {
   // ---- 書き出し ----
   document.getElementById('export-btn').addEventListener('click', exportSessions);
 
+  // ---- 改修履歴の開閉（イベント委譲） ----
+  document.getElementById('changelog-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="toggle-changelog"]');
+    if (!btn) return;
+    expandedChangelogVersion = expandedChangelogVersion === btn.dataset.version ? null : btn.dataset.version;
+    renderChangelog();
+  });
+
   // ---- 確認ダイアログ ----
   document.getElementById('dialog-cancel').addEventListener('click', () => hideConfirm({ runCancel: true }));
 
@@ -1280,4 +1354,5 @@ renderPreference();
 setupEvents();
 switchTab(activeTab);
 renderAll();
+document.getElementById('app-version').textContent = `v${APP_VERSION}`;
 showOrphanRoundPrompt();

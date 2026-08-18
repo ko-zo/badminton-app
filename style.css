@@ -72,6 +72,14 @@ body {
   letter-spacing: 0.3px;
 }
 
+/* 更新が届いたかどうかを見て分かるようにする */
+.app-version {
+  display: block;
+  font-size: 11px;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+
 /* ---- Tabs ---- */
 .tab-bar {
   display: flex;
@@ -963,4 +971,13 @@ body {
   line-height: 1.8;
   color: var(--green-dark);
   word-break: break-word;
+}
+
+/* ---- 記録タブ：改修履歴（past-list の見た目を流用） ---- */
+.changelog-notes {
+  list-style: disc;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
 }
