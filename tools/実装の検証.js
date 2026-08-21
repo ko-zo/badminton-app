@@ -199,6 +199,80 @@ const noLv = check('レベル全員未設定 × バランス型', { courts: 2, g
 ]);
 assert('レベル全員未設定なら対戦差もランダム並み', noLv.sideDiff > 15);
 
+// ---- 途中参加・休憩明けの扱い ----
+// 素の試合数で並べると、途中から参加した人がずっと「最少」のままになり、
+// 追いつくまで連続で出場してしまう。以前の実装で実際に起きていた回帰。
+function joinScenario({ people, courts, before, after, restId = null, restRounds = 0 }) {
+  const ids = 'ABCDEFGHIJKL'.slice(0, people).split('');
+  sandbox.__in = {
+    members: ids.map(n => ({ id: n, name: n, active: true, rest: false, gender: null, level: null }))
+      .concat([{ id: 'Z', name: 'Z', active: false, rest: false, gender: null, level: null }]),
+    courtTypes: Array(courts).fill('doubles'),
+  };
+  run(`members = __in.members; courtTypes = __in.courtTypes;
+       genderPreference = 'random'; levelPreference = 'random';
+       sessions = []; pendingRound = null;`);
+
+  const play = n => {
+    sandbox.__n = n;
+    return run(`(() => {
+      const t = todayKey(); const out = [];
+      for (let i = 0; i < __n; i++) {
+        const r = generateMatches();
+        commitRoundToDate(t, r);
+        out.push(playersInRound(serializeRound(r)).join(''));
+      }
+      return out;
+    })()`);
+  };
+
+  const setFlag = (id, key, val) => {
+    sandbox.__f = { id, key, val };
+    run('members.find(m => m.id === __f.id)[__f.key] = __f.val;');
+  };
+
+  play(before);
+
+  let watch, pool;
+  if (restId) {
+    setFlag(restId, 'rest', true);
+    play(restRounds);
+    setFlag(restId, 'rest', false);
+    watch = restId;
+    pool = people;              // Z は参加しないまま
+  } else {
+    setFlag('Z', 'active', true);
+    watch = 'Z';
+    pool = people + 1;
+  }
+
+  const rounds = play(after);
+  let max = 0, cur = 0;
+  rounds.forEach(r => { if (r.includes(watch)) { cur++; max = Math.max(max, cur); } else cur = 0; });
+
+  return {
+    played: rounds.filter(r => r.includes(watch)).length,
+    streak: max,
+    share: (after * courts * 4) / pool,
+  };
+}
+
+console.log('\n途中から参加した人・休憩明けの人がコートを独占しないか');
+console.log('-'.repeat(88));
+[
+  ['8人1コート：10R後に参加',  { people: 8,  courts: 1, before: 10, after: 10 }],
+  ['12人2コート：10R後に参加', { people: 12, courts: 2, before: 10, after: 10 }],
+  ['12人2コート：15R後に参加', { people: 12, courts: 2, before: 15, after: 15 }],
+  ['12人2コート：8R休憩して復帰', { people: 12, courts: 2, before: 5, after: 10, restId: 'A', restRounds: 8 }],
+].forEach(([label, cfg]) => {
+  const r = joinScenario(cfg);
+  const okShare  = Math.abs(r.played - r.share) <= Math.max(2, r.share * 0.4);
+  const okStreak = r.streak <= 3;
+  console.log(`  ${label.padEnd(26)} 出場 ${String(r.played).padStart(2)}回（取り分 ${r.share.toFixed(1)}回） 連続 ${r.streak}回  ${okShare && okStreak ? 'OK' : 'NG'}`);
+  assert(`${label} / 取り分どおりに出場する`, okShare);
+  assert(`${label} / 連続出場しない（独占しない）`, okStreak);
+});
+
 // ---- 古い設定からの移行 ----
 console.log('\n古い設定からの移行');
 console.log('-'.repeat(88));

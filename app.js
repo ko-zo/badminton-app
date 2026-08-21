@@ -44,6 +44,7 @@ const CHANGELOG = [
       'その日まだ組んでいない人と優先的にペアになるよう改善',
       '選んでいる内容の説明を表示するように',
       '記録タブに「組み合わせのしくみ」を追加（何を基準に組んでいるかを読めるように）',
+      '途中から参加した人がコートを独占してしまう不具合を修正',
       '性別・レベルのボタンを押しやすい大きさに変更',
     ],
   },
@@ -507,28 +508,41 @@ function getActiveMembers()   { return members.filter(m => m.active); }
 function getEligiblePlayers() { return members.filter(m => m.active && !m.rest); }
 function getRestPlayers()     { return members.filter(m => m.active && m.rest); }
 
-// 遅刻して途中から参加した人を、参加した時点から公平に扱うための試合数。
-// 素の試合数のまま比較すると、他の人が試合を重ねた後に加わった人は
-// ずっと「試合数最少」のままになり、追いつくまで優先的に出場し続けてしまう
-// （＝待機・休憩がその分だけ他の人に偏る）。
-// このセッションでまだ一度もプール（出場・待機・休憩のいずれか）に
-// 現れたことがない人だけ、基準値として確定済みラウンド数を使う。
-// 一度でも現れれば、以降は素の試合数の差だけで自然に公平になるため調整は不要。
+// 出場順を決めるための値。素の試合数ではなく「その人がいた間の取り分に対して
+// どれだけ足りていないか」で比べる。小さい（＝損をしている）人から先に出す。
+//
+//   値 = 実際の試合数 − その人がいた間に配られるはずだった試合数
+//
+// 素の試合数で比べると、途中から参加した人がずっと「最少」のままになり、
+// 追いつくまで出場し続けてしまう（＝先にいた人の待機が増える）。
+//
+// 以前は「まだ一度も現れていない人だけ、基準値としてラウンド数を使う」形にしていたが、
+// これは効かなかった。参加した次のラウンドで待機に入った時点で「現れた」ことになり、
+// そこから素の試合数（0）に戻るため、結局そこから連続で出続ける。
+// 12人2コートの検証で、途中参加者が10ラウンド中9回（9回連続）出場していた。
+//
+// 各ラウンドで、抽選対象だった人に「出場枠 ÷ 抽選対象の人数」を配る。
+// いなかったラウンドの分は配られないので、途中参加でも最初から公平に並ぶ。
+//
+// 休憩していた人には配らない。自分の意思で休んだ分を、復帰後に取り返す動きになると
+// 今度はその人が連続出場してしまうため。休んだ分は取り返さない、が正しい。
 function getFairnessCounts() {
   const counts  = getMatchCounts();
   const session = getCurrentSession();
   const rounds  = session ? session.rounds : [];
 
-  const appeared = new Set();
+  const expected = {};
   rounds.forEach(r => {
-    playersInRound(r).forEach(id => appeared.add(id));
-    (r.waiting || []).forEach(id => appeared.add(id));
-    (r.resting || []).forEach(id => appeared.add(id));
+    const playing = playersInRound(r);
+    const pool    = [...playing, ...(r.waiting || [])];   // 休憩は含めない
+    if (pool.length === 0) return;
+    const share = playing.length / pool.length;
+    pool.forEach(id => { expected[id] = (expected[id] || 0) + share; });
   });
 
   const fair = {};
   getEligiblePlayers().forEach(m => {
-    fair[m.id] = appeared.has(m.id) ? (counts[m.id] || 0) : rounds.length;
+    fair[m.id] = (counts[m.id] || 0) - (expected[m.id] || 0);
   });
   return fair;
 }
