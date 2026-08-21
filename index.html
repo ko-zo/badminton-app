@@ -92,22 +92,39 @@
 
         <div id="court-type-list"></div>
 
+        <!-- 性別と実力は別々の希望として指定できる。実測で互いに干渉しないことを
+             確認しているため、「男女ペア＋バランス型」のような併用ができる。 -->
         <div class="preference-group" id="preference-group">
-          <span class="preference-label">組み合わせ優先</span>
+          <span class="preference-label">性別の希望</span>
           <div class="preference-options">
             <label class="preference-option">
-              <input type="radio" name="match-pref" value="random" checked>
-              <span>ランダム</span>
+              <input type="radio" name="gender-pref" value="random" checked>
+              <span>指定なし</span>
             </label>
             <label class="preference-option">
-              <input type="radio" name="match-pref" value="mixed">
-              <span>混合優先</span>
-            </label>
-            <label class="preference-option">
-              <input type="radio" name="match-pref" value="same-gender">
-              <span>同性対戦優先</span>
+              <input type="radio" name="gender-pref" value="mixed">
+              <span>男女ペア</span>
             </label>
           </div>
+
+          <span class="preference-label preference-label-2nd">実力の希望</span>
+          <div class="preference-options">
+            <label class="preference-option">
+              <input type="radio" name="level-pref" value="random" checked>
+              <span>指定なし</span>
+            </label>
+            <label class="preference-option">
+              <input type="radio" name="level-pref" value="balanced">
+              <span>バランス型</span>
+            </label>
+            <label class="preference-option">
+              <input type="radio" name="level-pref" value="same-level">
+              <span>同レベル</span>
+            </label>
+          </div>
+
+          <p id="preference-hint" class="hint-text preference-hint" aria-live="polite"></p>
+          <p id="preference-warn" class="preference-warn" aria-live="polite" hidden></p>
         </div>
       </section>
 

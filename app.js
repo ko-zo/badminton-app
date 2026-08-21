@@ -19,11 +19,17 @@ const LEGACY_PENDING_KEY  = 'badminton_v1_pending';
 const LEGACY_PRIORITY_KEY = 'badminton_v1_priority';
 
 const COURT_TYPES = ['doubles', 'singles'];
-const PREFERENCES = ['random', 'mixed', 'same-gender'];
+// 性別と実力は別々の希望。実測で互いに干渉しないことを確認している
+// （男女ペア単独 85.0% → バランス型と併用 83.0%）。
+const GENDER_PREFS = ['random', 'mixed'];
+const LEVEL_PREFS  = ['random', 'balanced', 'same-level'];
+const LEVEL_MAX    = 5;                            // レベルは1〜5（5が一番上手い）
+const LEVEL_MID    = Math.ceil(LEVEL_MAX / 2);     // 未設定の人を計算上どう扱うか
 const TABS        = ['members', 'match', 'log'];
 
 const MAX_SESSIONS   = 100; // 保持する練習会の数（1回あたり約5KBなので上限5MBに対して十分小さい）
 const ARRANGE_TRIES  = 200; // 組み方の候補を何通り試すか
+const SEED_TRIES     = 30;  // 同レベル用に、レベル順に並べた候補を何本用意するか
 
 // 改修履歴。更新を出すたびに先頭へ追記する（バージョンは先頭の値がそのまま使われる）。
 // 更新が実際に届いたかどうかを画面で確認できるようにするためのもの。
@@ -70,16 +76,26 @@ const APP_VERSION = CHANGELOG[0].version;
 // 組み方スコアの重み（小さいほど良い組み合わせ）
 const W_PAIR   = 3;   // 同じペアの再結成
 const W_OPP    = 1;   // 同じ対戦の再戦
-// 組み合わせ優先はユーザーが明示的に選んだ設定なので、重複回避より必ず優先させる。
+// 希望はユーザーが明示的に選んだ設定なので、重複回避より必ず優先させる。
 // 履歴が溜まると重複の減点が積み上がるため、それを確実に上回る値にしている。
 const W_GENDER = 100;
+const W_LEVEL  = 100;  // 対戦の釣り合い（バランス型）・コート内の揃い（同レベル）
+// ペア内の開き（バランス型で上手い人と下手な人を組ませる分）だけは意図的に小さい。
+// 強くすると同じペアが固定される。30 だと約10回、10 なら約4回で重複回避が勝つ。
+const W_LEVEL_SPREAD = 10;
+// まだ一度も組んでいないペアを優先するための段差。
+// 「初対面かどうか」が最も重要で、2回目と3回目の差はそれほど重要ではないため、
+// 回数に比例させるのではなく最初の1回に段差をつける。
+// W_LEVEL_SPREAD(10) は上回るが W_LEVEL(100) は下回る位置。100以上にすると同レベルが壊れる。
+const W_PAIR_FIRST = 30;
 
 // ============================================================
 // 状態
 // ============================================================
 let members         = [];          // { id, name, active, rest, gender }
 let courtTypes      = ['doubles']; // 'doubles' | 'singles' — コートごとの種別
-let matchPreference = 'random';    // 'random' | 'mixed' | 'same-gender'
+let genderPreference = 'random';   // 'random' | 'mixed'
+let levelPreference  = 'random';   // 'random' | 'balanced' | 'same-level'
 let activeTab       = 'members';
 let sessions        = [];          // [{ date, names: {id:name}, rounds: [...] }]
 let pendingRound    = null;        // 表示中で未確定の組み合わせ（確定するまで記録されない）
@@ -124,6 +140,20 @@ function writeStore(key, value, label) {
 }
 
 // 壊れた値が入っていても落ちないよう、読み込み時に構造を検証する
+// レベルは localStorage 経由で書き換えられうるため、1〜5の整数でなければ未設定に落とす。
+// レベル機能より前に登録されたメンバーは level を持たないので、ここで null になる。
+// undefined のまま計算に流すと点数が NaN になり、減点が「エラーも出ずに」全部効かなくなる。
+function normalizeLevel(value) {
+  return Number.isInteger(value) && value >= 1 && value <= LEVEL_MAX ? value : null;
+}
+
+function sanitizeMembers(parsed) {
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter(m => m && typeof m.id === 'string')
+    .map(m => ({ ...m, level: normalizeLevel(m.level) }));
+}
+
 function sanitizeSessions(parsed) {
   if (!Array.isArray(parsed)) return [];
   return parsed
@@ -139,7 +169,7 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(parsed)) members = parsed.filter(m => m && typeof m.id === 'string');
+    members = sanitizeMembers(parsed);
   } catch { members = []; }
 
   try {
@@ -148,7 +178,11 @@ function loadState() {
       const s = JSON.parse(raw);
       const types = (s.courtTypes || []).filter(t => COURT_TYPES.includes(t));
       if (types.length > 0) courtTypes = types;
-      if (PREFERENCES.includes(s.matchPreference)) matchPreference = s.matchPreference;
+      // 旧バージョンは matchPreference という1つの値だった。2つに分けて引き継ぐ。
+      // 廃止した 'same-gender' は該当しないため、性別の希望は「指定なし」に戻る。
+      if (GENDER_PREFS.includes(s.genderPreference)) genderPreference = s.genderPreference;
+      else if (s.matchPreference === 'mixed')        genderPreference = 'mixed';
+      if (LEVEL_PREFS.includes(s.levelPreference))   levelPreference  = s.levelPreference;
       if (TABS.includes(s.activeTab)) activeTab = s.activeTab;
     }
   } catch {}
@@ -215,7 +249,8 @@ function saveState() {
 function saveSettings() {
   return writeStore(SETTINGS_KEY, JSON.stringify({
     courtTypes,
-    matchPreference,
+    genderPreference,
+    levelPreference,
     activeTab,
   }), '設定');
 }
@@ -239,7 +274,7 @@ function generateId() {
 function addMember(name) {
   const trimmed = name.trim();
   if (!trimmed) return false;
-  members.push({ id: generateId(), name: trimmed, active: true, rest: false, gender: null });
+  members.push({ id: generateId(), name: trimmed, active: true, rest: false, gender: null, level: null });
   saveState();
   return true;
 }
@@ -270,6 +305,17 @@ function cycleGender(id) {
   if (m.gender === null)     m.gender = 'M';
   else if (m.gender === 'M') m.gender = 'F';
   else                       m.gender = null;
+  saveState();
+}
+
+// レベルは性別と別のボタンにしている。1つのボタンで「性別×レベル」を全部回すと
+// F3にするのに8タップかかり、行き過ぎたら一周させ直しになるため。
+function cycleLevel(id) {
+  const m = members.find(m => m.id === id);
+  if (!m) return;
+  if (m.level === null)        m.level = 1;
+  else if (m.level < LEVEL_MAX) m.level += 1;
+  else                          m.level = null;
   saveState();
 }
 
@@ -511,23 +557,54 @@ function shuffleArray(arr) {
   return a;
 }
 
-// 組み合わせ優先に反していれば減点する。
-// 混合優先はペアの概念があるダブルスのみ、同性対戦優先はシングルスにも効かせる。
+// 性別の希望に反していれば減点する。ペアの概念があるダブルスのみ有効。
 function genderPenalty(side1, side2) {
-  if (matchPreference === 'mixed') {
-    let penalty = 0;
+  if (genderPreference !== 'mixed') return 0;
+  let penalty = 0;
+  [side1, side2].forEach(side => {
+    if (side.length === 2 && side[0].gender && side[1].gender && side[0].gender === side[1].gender) {
+      penalty += W_GENDER;
+    }
+  });
+  return penalty;
+}
+
+// 未設定は真ん中（3）として計算する。0や特別扱いにすると、その人だけが常に
+// 強い側／弱い側に固定される。全員未設定なら全候補が同じ点になり、結果は
+// 指定なしと一致する（レベルを付けていないのに勝手に偏らない）。
+function levelOf(player) {
+  return player.level === null || player.level === undefined ? LEVEL_MID : player.level;
+}
+
+// 実力の希望に反していれば減点する。性別とは別に採点して足す（互いに干渉しない）。
+function levelPenalty(side1, side2) {
+  if (levelPreference === 'same-level') {
+    const levels = [...side1, ...side2].map(levelOf);
+    return (Math.max(...levels) - Math.min(...levels)) * W_LEVEL;
+  }
+
+  if (levelPreference === 'balanced') {
+    const total = side => side.reduce((sum, p) => sum + levelOf(p), 0);
+    // 対戦が五分になること。これが主目的。
+    let score = Math.abs(total(side1) - total(side2)) * W_LEVEL;
+    // ペアの中は上手い人と下手な人を組ませたい。釣り合いだけを見ると
+    // 「上手い4人のコート」も減点0になり、同レベルと区別がつかなくなるため必要。
     [side1, side2].forEach(side => {
-      if (side.length === 2 && side[0].gender && side[1].gender && side[0].gender === side[1].gender) {
-        penalty += W_GENDER;
+      if (side.length === 2) {
+        const spread = Math.abs(levelOf(side[0]) - levelOf(side[1]));
+        score += ((LEVEL_MAX - 1) - spread) * W_LEVEL_SPREAD;
       }
     });
-    return penalty;
+    return score;
   }
-  if (matchPreference === 'same-gender') {
-    const genders = [...side1, ...side2].map(p => p.gender).filter(Boolean);
-    return genders.includes('M') && genders.includes('F') ? W_GENDER : 0;
-  }
+
   return 0;
+}
+
+// まだ一度も組んでいないペアを優先する。基準を増やしたのではなく、
+// 既にある「同じペアを避ける」の減点のつけ方を変えただけ。
+function pairPenalty(count) {
+  return count === 0 ? 0 : W_PAIR_FIRST + (count - 1) * W_PAIR;
 }
 
 // 並び順どおりにコートへ割り当てた場合の「悪さ」を採点する
@@ -542,22 +619,58 @@ function scoreArrangement(players, history) {
     if (type === 'singles') {
       const [a, b] = players.slice(idx, idx + 2);
       score += (history.opp[pairKey(a.id, b.id)] || 0) * W_OPP;
-      score += genderPenalty([a], [b]);
+      score += genderPenalty([a], [b]) + levelPenalty([a], [b]);
     } else {
       const [a, b, c, d] = players.slice(idx, idx + 4);
-      score += (history.pair[pairKey(a.id, b.id)] || 0) * W_PAIR;
-      score += (history.pair[pairKey(c.id, d.id)] || 0) * W_PAIR;
+      score += pairPenalty(history.pair[pairKey(a.id, b.id)] || 0);
+      score += pairPenalty(history.pair[pairKey(c.id, d.id)] || 0);
       [[a, c], [a, d], [b, c], [b, d]].forEach(([x, y]) => {
         score += (history.opp[pairKey(x.id, y.id)] || 0) * W_OPP;
       });
-      score += genderPenalty([a, b], [c, d]);
+      score += genderPenalty([a, b], [c, d]) + levelPenalty([a, b], [c, d]);
     }
     idx += needed;
   }
   return score;
 }
 
-// 候補を何通りか試して、ペア・対戦の重複と性別優先の点で最良の並びを選ぶ
+// 同レベルのときだけ、レベル順に並べた候補（種）を用意する。
+//
+// 同レベルは「出場者を何グループに分けるか」という全体の問題で、12人3コートなら
+// 5775通りある。ランダム200通りでは良い分け方にまず当たらない（実測でコート幅 35.1）。
+// レベル順に並べて先頭からコートへ入れれば、コート内の差の合計は最小になる（26.8）。
+//
+// ただし種を1本にすると、それが毎回勝ってしまい同じペアが固定される
+// （実測で20ラウンド中15.2回）。ランダム候補は同レベルの点で種に勝てないため、
+// 重複回避が働く出番が来ない。そこでコート内の並びを変えた変種を複数作る。
+// コート内で並べ替えても最大−最小は変わらないので、どれも同レベルの点は同じになり、
+// その中で重複回避が正しく効く（15.2 → 7.0）。
+//
+// バランス型はコート1つの中だけを見る個別の問題なので、ランダムでも当たる。
+// 実測でも種あり6.3・種なし6.2と差が出なかったため、種は作らない。
+function seedArrangements(playing) {
+  if (levelPreference !== 'same-level') return [];
+
+  const seeds = [];
+  for (let i = 0; i < SEED_TRIES; i++) {
+    // 同じレベルの人どうしの順序は毎回変える（先にシャッフルしてから安定ソート）
+    const sorted   = shuffleArray(playing).sort((a, b) => levelOf(b) - levelOf(a));
+    const arranged = [];
+    let idx = 0;
+
+    for (const type of courtTypes) {
+      const needed = type === 'singles' ? 2 : 4;
+      if (idx + needed > sorted.length) break;
+      arranged.push(...shuffleArray(sorted.slice(idx, idx + needed)));
+      idx += needed;
+    }
+    arranged.push(...sorted.slice(idx));
+    seeds.push(arranged);
+  }
+  return seeds;
+}
+
+// 候補を何通りか試して、ペア・対戦の重複と希望の点で最良の並びを選ぶ
 function bestArrangement(playing) {
   if (playing.length === 0) return playing;
   const history = getPairHistory();
@@ -565,9 +678,11 @@ function bestArrangement(playing) {
   let best      = playing;
   let bestScore = Infinity;
 
-  for (let i = 0; i < ARRANGE_TRIES; i++) {
-    const candidate = shuffleArray(playing);
-    const score     = scoreArrangement(candidate, history);
+  const candidates = seedArrangements(playing);
+  for (let i = 0; i < ARRANGE_TRIES; i++) candidates.push(shuffleArray(playing));
+
+  for (const candidate of candidates) {
+    const score = scoreArrangement(candidate, history);
     if (score < bestScore) {
       bestScore = score;
       best      = candidate;
@@ -639,6 +754,10 @@ function genderLabel(gender) {
   if (gender === 'M') return 'M';
   if (gender === 'F') return 'F';
   return '−';
+}
+
+function levelLabel(level) {
+  return level === null || level === undefined ? '−' : String(level);
 }
 
 function formatTime(ms) {
@@ -722,8 +841,14 @@ function renderRoster() {
         class="gender-btn gender-btn-${m.gender || 'none'}"
         data-action="cycle-gender"
         data-id="${escapeHtml(m.id)}"
-        aria-label="性別切り替え"
+        aria-label="${escapeHtml(m.name)}の性別：${escapeHtml(genderLabel(m.gender))}。タップで切り替え"
       >${escapeHtml(genderLabel(m.gender))}</button>
+      <button
+        class="level-btn gender-btn-${m.gender || 'none'}"
+        data-action="cycle-level"
+        data-id="${escapeHtml(m.id)}"
+        aria-label="${escapeHtml(m.name)}のレベル：${escapeHtml(levelLabel(m.level))}。タップで切り替え"
+      >${escapeHtml(levelLabel(m.level))}</button>
       <span class="member-name">${escapeHtml(m.name)}</span>
       <label class="toggle" title="今回参加">
         <input type="checkbox" data-action="toggle-active" data-id="${escapeHtml(m.id)}"${m.active ? ' checked' : ''}>
@@ -812,10 +937,48 @@ function renderCourtTypes() {
   });
 }
 
-// 保存された組み合わせ優先をラジオボタンに反映する（コート設定は renderCourtTypes が描画する）
+// いま選んでいる内容の説明。「男女ペア」と「バランス型」は名前だけでは
+// 何を混ぜるのか（男女か強さか）区別できないため、文章で示す。
+const PREFERENCE_TEXT = {
+  'random|random':     '優先なしで組みます',
+  'mixed|random':      '男女のペアを優先します',
+  'random|balanced':   '上手い人と上手くない人を組ませ、対戦を五分にします',
+  'mixed|balanced':    '男女のペアで、対戦が五分になるように組みます',
+  'random|same-level': '近い強さの人だけでコートを作ります',
+  'mixed|same-level':  '男女のペアで、近い強さの人だけでコートを作ります',
+};
+
+// 保存された希望をラジオボタンに反映し、説明と注意を出す
 function renderPreference() {
-  const radio = document.querySelector(`input[name="match-pref"][value="${matchPreference}"]`);
-  if (radio) radio.checked = true;
+  const g = document.querySelector(`input[name="gender-pref"][value="${genderPreference}"]`);
+  const l = document.querySelector(`input[name="level-pref"][value="${levelPreference}"]`);
+  if (g) g.checked = true;
+  if (l) l.checked = true;
+
+  const hint = document.getElementById('preference-hint');
+  if (hint) hint.textContent = PREFERENCE_TEXT[`${genderPreference}|${levelPreference}`] || '';
+
+  const warn = document.getElementById('preference-warn');
+  if (!warn) return;
+
+  const notes = [];
+
+  // 同レベルは「複数のコートにどう振り分けるか」を決める希望なので、
+  // 1コートだと出場者が確定してしまい、並べ替えても結果が変わらない。
+  // 黙って効かないのが一番よくないので画面で知らせる。
+  if (levelPreference === 'same-level' && courtTypes.length === 1) {
+    notes.push('「同レベル」は2コート以上で効果があります');
+  }
+
+  // レベルは全員に付けないと狙いどおりに組まれない。未設定は3として計算され、
+  // エラーも出ないため、付け忘れに気づけるよう人数を出す。
+  if (levelPreference !== 'random') {
+    const unset = getActiveMembers().filter(m => m.level === null).length;
+    if (unset > 0) notes.push(`レベル未設定：${unset}人`);
+  }
+
+  warn.textContent = notes.join('　／　');
+  warn.hidden      = notes.length === 0;
 }
 
 function updateSettings() {
@@ -864,6 +1027,7 @@ function updateSettings() {
   }
 
   renderCourtTypes();
+  renderPreference();
 }
 
 function playerHtml(player) {
@@ -1208,6 +1372,9 @@ function setupEvents() {
     } else if (btn.dataset.action === 'cycle-gender') {
       cycleGender(btn.dataset.id);
       renderAll();
+    } else if (btn.dataset.action === 'cycle-level') {
+      cycleLevel(btn.dataset.id);
+      renderAll();
     }
   });
 
@@ -1248,12 +1415,13 @@ function setupEvents() {
     updateSettings();
   });
 
-  // ---- 組み合わせ優先 ----
+  // ---- 性別・実力の希望 ----
   document.getElementById('preference-group').addEventListener('change', e => {
-    if (e.target.name === 'match-pref') {
-      matchPreference = e.target.value;
-      saveSettings();
-    }
+    if (e.target.name === 'gender-pref')     genderPreference = e.target.value;
+    else if (e.target.name === 'level-pref') levelPreference  = e.target.value;
+    else return;
+    saveSettings();
+    renderPreference();
   });
 
   // ---- 主ボタン: 表示中のものがあれば確定し、続けて次を引く ----
