@@ -1,21 +1,47 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- マスカブル用: セーフゾーン(80%)の中にデザインを収める -->
-  <!-- 背景（全面） -->
+  <!-- マスカブル用: 全面背景。円形マスク(半径40%)でも欠けない大きさにしている -->
   <rect width="512" height="512" fill="#2E7D32"/>
-  <!-- ラケットヘッド -->
-  <ellipse cx="256" cy="230" rx="108" ry="122" fill="none" stroke="white" stroke-width="18"/>
-  <!-- 横ストリング -->
-  <line x1="155" y1="180" x2="357" y2="180" stroke="white" stroke-width="6" opacity="0.65"/>
-  <line x1="149" y1="218" x2="363" y2="218" stroke="white" stroke-width="6" opacity="0.65"/>
-  <line x1="149" y1="256" x2="363" y2="256" stroke="white" stroke-width="6" opacity="0.65"/>
-  <line x1="155" y1="294" x2="357" y2="294" stroke="white" stroke-width="6" opacity="0.65"/>
-  <!-- 縦ストリング -->
-  <line x1="210" y1="109" x2="210" y2="350" stroke="white" stroke-width="6" opacity="0.65"/>
-  <line x1="256" y1="108" x2="256" y2="352" stroke="white" stroke-width="6" opacity="0.65"/>
-  <line x1="302" y1="109" x2="302" y2="350" stroke="white" stroke-width="6" opacity="0.65"/>
-  <!-- グリップ -->
-  <rect x="235" y="350" width="42" height="100" fill="white" rx="14"/>
-  <line x1="235" y1="375" x2="277" y2="375" stroke="#4CAF50" stroke-width="7"/>
-  <line x1="235" y1="400" x2="277" y2="400" stroke="#4CAF50" stroke-width="7"/>
-  <line x1="235" y1="425" x2="277" y2="425" stroke="#4CAF50" stroke-width="7"/>
+  <g transform="translate(256 256) scale(0.86) translate(-256 -291)">
+    <g stroke="#1A1A1A" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <!-- 顔（耳のとがりは stroke-linejoin="round" でわずかに丸くなる） -->
+      <path fill="#FFFFFF" stroke-width="15" d="
+        M 128 250
+        L 140 120
+        L 232 184
+        C 250 176 262 176 280 184
+        L 372 120
+        L 384 250
+        C 402 284 404 330 388 372
+        C 362 432 312 462 256 462
+        C 200 462 150 432 124 372
+        C 108 330 110 284 128 250
+        Z"/>
+  
+      <!-- 左目：¥（青） -->
+      <g stroke="#1565C0" stroke-width="14">
+        <path d="M 169 256 L 196 282"/>
+        <path d="M 223 256 L 196 282"/>
+        <path d="M 196 282 L 196 318"/>
+        <path d="M 176 294 L 216 294"/>
+        <path d="M 176 308 L 216 308"/>
+      </g>
+  
+      <!-- 右目：¥（ピンク）＝オッドアイ -->
+      <g stroke="#D81B60" stroke-width="14">
+        <path d="M 289 256 L 316 282"/>
+        <path d="M 343 256 L 316 282"/>
+        <path d="M 316 282 L 316 318"/>
+        <path d="M 296 294 L 336 294"/>
+        <path d="M 296 308 L 336 308"/>
+      </g>
+  
+      <!-- 鼻 -->
+      <path fill="#1A1A1A" stroke-width="7" d="
+        M 240 342 Q 256 334 272 342 Q 264 362 256 362 Q 248 362 240 342 Z"/>
+  
+      <!-- 口（ω） -->
+      <path stroke-width="12" d="M 256 364 Q 238 398 213 383"/>
+      <path stroke-width="12" d="M 256 364 Q 274 398 299 383"/>
+    </g>
+  </g>
 </svg>
