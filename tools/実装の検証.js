@@ -246,6 +246,8 @@ function joinScenario({ people, courts, before, after, restId = null, restRounds
     pool = people + 1;
   }
 
+  const fairAtJoin = JSON.parse(run('JSON.stringify(getFairnessCounts())'))[watch];
+
   const rounds = play(after);
   let max = 0, cur = 0;
   rounds.forEach(r => { if (r.includes(watch)) { cur++; max = Math.max(max, cur); } else cur = 0; });
@@ -254,6 +256,8 @@ function joinScenario({ people, courts, before, after, restId = null, restRounds
     played: rounds.filter(r => r.includes(watch)).length,
     streak: max,
     share: (after * courts * 4) / pool,
+    firstRound: rounds[0].includes(watch),   // 復帰・参加した直後のラウンドで出場したか
+    fairAtJoin,                               // そのときの「不足」の値
   };
 }
 
@@ -272,6 +276,41 @@ console.log('-'.repeat(88));
   assert(`${label} / 取り分どおりに出場する`, okShare);
   assert(`${label} / 連続出場しない（独占しない）`, okStreak);
 });
+
+// 休憩から戻った1回目は優先して出場する（休んだ分をまとめて取り返しはしない）
+console.log('\n休憩から戻った1回目は必ず出場するか（20回試行）');
+console.log('-'.repeat(88));
+[
+  ['12人2コート：1R休憩して復帰',  { people: 12, courts: 2, before: 5, after: 6, restId: 'A', restRounds: 1 }],
+  ['12人2コート：8R休憩して復帰',  { people: 12, courts: 2, before: 5, after: 6, restId: 'A', restRounds: 8 }],
+  ['16人2コート：3R休憩して復帰',  { people: 16, courts: 2, before: 8, after: 6, restId: 'A', restRounds: 3 }],
+].forEach(([label, cfg]) => {
+  let first = 0, streakMax = 0;
+  for (let i = 0; i < 20; i++) {
+    const r = joinScenario(cfg);
+    if (r.firstRound) first++;
+    streakMax = Math.max(streakMax, r.streak);
+  }
+  const ok = first === 20 && streakMax <= 3;
+  console.log(`  ${label.padEnd(26)} 復帰直後に出場 ${first}/20回  最大連続 ${streakMax}回  ${ok ? 'OK' : 'NG'}`);
+  assert(`${label} / 復帰直後に必ず出場する`, first === 20);
+  assert(`${label} / それでも連続出場はしない`, streakMax <= 3);
+});
+
+// 途中参加の人には「復帰の優先」を付けない。
+// 不足がちょうど0（遅れても進んでもいない）の位置に並ぶだけなので、
+// 結果として直後のラウンドには入りやすいが、優先枠を使っているわけではない。
+// 優先が付いていれば値は -1000 付近になるので、そこで区別できる。
+{
+  const join = joinScenario({ people: 12, courts: 2, before: 10, after: 6 });
+  const back = joinScenario({ people: 12, courts: 2, before: 5, after: 6, restId: 'A', restRounds: 3 });
+  const joinOk = Math.abs(join.fairAtJoin) < 10;
+  const backOk = back.fairAtJoin < -900;
+  console.log(`  ${'途中から新規参加'.padEnd(26)} 不足の値 ${join.fairAtJoin.toFixed(2).padStart(9)}（優先枠なし）  ${joinOk ? 'OK' : 'NG'}`);
+  console.log(`  ${'休憩から復帰'.padEnd(26)} 不足の値 ${back.fairAtJoin.toFixed(2).padStart(9)}（優先枠あり）  ${backOk ? 'OK' : 'NG'}`);
+  assert('途中参加の人に復帰の優先枠は付かない', joinOk);
+  assert('休憩から復帰した人には優先枠が付く', backOk);
+}
 
 // ---- 古い設定からの移行 ----
 console.log('\n古い設定からの移行');

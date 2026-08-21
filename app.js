@@ -45,6 +45,7 @@ const CHANGELOG = [
       '選んでいる内容の説明を表示するように',
       '記録タブに「組み合わせのしくみ」を追加（何を基準に組んでいるかを読めるように）',
       '途中から参加した人がコートを独占してしまう不具合を修正',
+      '休憩から戻った人が、戻って最初の1回は優先して出場するように',
       '性別・レベルのボタンを押しやすい大きさに変更',
     ],
   },
@@ -526,23 +527,45 @@ function getRestPlayers()     { return members.filter(m => m.active && m.rest); 
 //
 // 休憩していた人には配らない。自分の意思で休んだ分を、復帰後に取り返す動きになると
 // 今度はその人が連続出場してしまうため。休んだ分は取り返さない、が正しい。
+//
+// ただし復帰した1回目だけは優先して出す（RETURN_PRIORITY）。休憩を解除したのに
+// 何ラウンドも待機が続くと「解除したのに何も起きない」と受け取られるため。
+// 取り返すのは1回だけなので、休んだ分がまとめて戻ってくるわけではない。
+const RETURN_PRIORITY = 1000; // 通常の値は概ね ±1 に収まるので、確実に先頭へ来る大きさ
+
 function getFairnessCounts() {
   const counts  = getMatchCounts();
   const session = getCurrentSession();
   const rounds  = session ? session.rounds : [];
 
-  const expected = {};
-  rounds.forEach(r => {
+  const expected   = {};
+  const lastRested = {};   // 最後に休憩していたラウンドの番号
+  const lastPlayed = {};   // 最後に出場したラウンドの番号
+
+  rounds.forEach((r, i) => {
     const playing = playersInRound(r);
     const pool    = [...playing, ...(r.waiting || [])];   // 休憩は含めない
-    if (pool.length === 0) return;
-    const share = playing.length / pool.length;
-    pool.forEach(id => { expected[id] = (expected[id] || 0) + share; });
+    if (pool.length > 0) {
+      const share = playing.length / pool.length;
+      pool.forEach(id => { expected[id] = (expected[id] || 0) + share; });
+    }
+    playing.forEach(id => { lastPlayed[id] = i; });
+    (r.resting || []).forEach(id => { lastRested[id] = i; });
   });
+
+  // 休憩したあと、まだ一度も出場していない人。
+  // 一度出場すれば lastPlayed が lastRested を追い越して外れるので、優先は1回だけ。
+  // 復帰した人が同時に複数いて枠に入りきらなくても、出場するまで優先が続く。
+  const justReturned = id => {
+    const rested = lastRested[id];
+    if (rested === undefined) return false;
+    return lastPlayed[id] === undefined || lastPlayed[id] < rested;
+  };
 
   const fair = {};
   getEligiblePlayers().forEach(m => {
-    fair[m.id] = (counts[m.id] || 0) - (expected[m.id] || 0);
+    const deficit = (counts[m.id] || 0) - (expected[m.id] || 0);
+    fair[m.id] = justReturned(m.id) ? deficit - RETURN_PRIORITY : deficit;
   });
   return fair;
 }
