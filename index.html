@@ -173,6 +173,49 @@
         <button id="export-btn" class="btn btn-secondary btn-full">記録をファイルに書き出す</button>
       </section>
 
+      <!-- 利用者向けの説明。details を使い、閉じているときは1行で場所を取らない。 -->
+      <section class="card">
+        <details class="guide">
+          <summary class="guide-summary">組み合わせのしくみ</summary>
+          <div class="guide-body">
+
+            <h3 class="guide-h">選ぶもの（試合タブの設定）</h3>
+
+            <p class="guide-lead">性別の希望</p>
+            <ul class="guide-list">
+              <li><b>指定なし</b>：性別を見ません</li>
+              <li><b>男女ペア</b>：<b>男女が同じチームになる</b>ように優先します（ダブルスのみ）</li>
+            </ul>
+
+            <p class="guide-lead">実力の希望</p>
+            <ul class="guide-list">
+              <li><b>指定なし</b>：レベルを見ません</li>
+              <li><b>バランス型</b>：上手い人と上手くない人を同じチームにして、<b>対戦する2チームの強さを揃えます</b></li>
+              <li><b>同レベル</b>：<b>近い強さの人だけ</b>でコートを作ります（2コート以上で効果があります）</li>
+            </ul>
+
+            <p class="guide-note">この2つは同時に選べます（例：男女ペア＋バランス型）。</p>
+
+            <h3 class="guide-h">レベル（1〜5）</h3>
+            <ul class="guide-list">
+              <li><b>5が一番上手い</b>人です</li>
+              <li>付けていない人は<b>「3」（真ん中）として計算します</b></li>
+              <li>全員付けていなければ、実力の希望を選んでも「指定なし」と同じ結果になります</li>
+            </ul>
+
+            <h3 class="guide-h">いつも自動で効いていること</h3>
+            <ol class="guide-list">
+              <li>出場者は、<b>その日の試合数が少ない人から</b>選ばれます（同じ数ならランダム）</li>
+              <li>その日<b>すでに組んだペア</b>を避けます（まだ組んでいない人が優先されます）</li>
+              <li>その日<b>すでに当たった相手</b>を避けます</li>
+            </ol>
+
+            <p class="guide-note">レベルと性別は、<b>1番（誰が出るか）には影響しません。</b> 上手い・下手で待機が偏ることはありません。</p>
+
+          </div>
+        </details>
+      </section>
+
       <section class="card">
         <h2 class="section-title">改修履歴</h2>
         <ul id="changelog-list" class="past-list" aria-label="改修履歴一覧"></ul>
