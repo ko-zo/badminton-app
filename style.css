@@ -296,7 +296,7 @@ body {
 .member-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   min-height: 52px;
   padding: 8px 4px;
   border-bottom: 1px solid var(--border);
@@ -379,14 +379,34 @@ body {
   line-height: 1.5;
 }
 
-/* ---- 性別ボタン ---- */
+/* ---- 性別ボタン・レベルボタン ---- */
+/* 形を変えているのは見分けるため。どちらも未設定だと「−」「−」と同じ表示が
+   並ぶので、色と文字では区別できない。性別＝角丸の四角、レベル＝丸。 */
 .gender-btn {
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   border: 2px solid var(--border);
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  background: white;
+  color: var(--text-sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.level-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  font-size: 14px;
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
@@ -643,6 +663,91 @@ body {
   background: var(--green);
   border-color: var(--green);
   color: white;
+}
+
+/* 2つ目の希望（実力）の行は、上の行と間隔をあけて別の設定だと分かるようにする */
+.preference-label-2nd {
+  margin-top: 14px;
+}
+
+.preference-hint {
+  text-align: left;
+  margin-top: 8px;
+}
+
+/* 設定が効かない状態・レベルの付け忘れを知らせる。
+   黙って効かないのが一番よくないので、本文より目立つ色にする。 */
+.preference-warn {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--orange);
+}
+
+/* ---- 組み合わせのしくみ（利用者向けの説明） ----
+   閉じているときは1行だけ。記録タブを長くしないため既定で閉じている。 */
+.guide-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--tap);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  list-style: none;
+  user-select: none;
+}
+
+.guide-summary::-webkit-details-marker { display: none; }
+
+.guide-summary::before {
+  content: '\25B6';
+  font-size: 10px;
+  color: var(--text-sub);
+}
+
+.guide[open] .guide-summary::before { content: '\25BC'; }
+
+.guide[open] .guide-summary {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+}
+
+.guide-h {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 18px;
+  margin-bottom: 4px;
+}
+
+.guide-lead {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-sub);
+  margin-top: 10px;
+}
+
+.guide-list {
+  margin: 4px 0 0 1.4em;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.guide-list li { margin-bottom: 3px; }
+
+.guide-note {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-sub);
+  margin-top: 10px;
 }
 
 /* ---- Hint ---- */

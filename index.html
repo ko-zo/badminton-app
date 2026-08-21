@@ -92,22 +92,39 @@
 
         <div id="court-type-list"></div>
 
+        <!-- 性別と実力は別々の希望として指定できる。実測で互いに干渉しないことを
+             確認しているため、「男女ペア＋バランス型」のような併用ができる。 -->
         <div class="preference-group" id="preference-group">
-          <span class="preference-label">組み合わせ優先</span>
+          <span class="preference-label">性別の希望</span>
           <div class="preference-options">
             <label class="preference-option">
-              <input type="radio" name="match-pref" value="random" checked>
-              <span>ランダム</span>
+              <input type="radio" name="gender-pref" value="random" checked>
+              <span>指定なし</span>
             </label>
             <label class="preference-option">
-              <input type="radio" name="match-pref" value="mixed">
-              <span>混合優先</span>
-            </label>
-            <label class="preference-option">
-              <input type="radio" name="match-pref" value="same-gender">
-              <span>同性対戦優先</span>
+              <input type="radio" name="gender-pref" value="mixed">
+              <span>男女ペア</span>
             </label>
           </div>
+
+          <span class="preference-label preference-label-2nd">実力の希望</span>
+          <div class="preference-options">
+            <label class="preference-option">
+              <input type="radio" name="level-pref" value="random" checked>
+              <span>指定なし</span>
+            </label>
+            <label class="preference-option">
+              <input type="radio" name="level-pref" value="balanced">
+              <span>バランス型</span>
+            </label>
+            <label class="preference-option">
+              <input type="radio" name="level-pref" value="same-level">
+              <span>同レベル</span>
+            </label>
+          </div>
+
+          <p id="preference-hint" class="hint-text preference-hint" aria-live="polite"></p>
+          <p id="preference-warn" class="preference-warn" aria-live="polite" hidden></p>
         </div>
       </section>
 
@@ -154,6 +171,58 @@
         <p id="past-hint" class="chip-hint" hidden>日付をタップすると、その日の対戦内容を表示します</p>
         <p id="past-empty" class="empty-text">過去の記録はありません</p>
         <button id="export-btn" class="btn btn-secondary btn-full">記録をファイルに書き出す</button>
+      </section>
+
+      <!-- 利用者向けの説明。details を使い、閉じているときは1行で場所を取らない。 -->
+      <section class="card">
+        <details class="guide">
+          <summary class="guide-summary">組み合わせのしくみ</summary>
+          <div class="guide-body">
+
+            <h3 class="guide-h">選ぶもの（試合タブの設定）</h3>
+
+            <p class="guide-lead">性別の希望</p>
+            <ul class="guide-list">
+              <li><b>指定なし</b>：性別を見ません</li>
+              <li><b>男女ペア</b>：<b>男女が同じチームになる</b>ように優先します（ダブルスのみ）</li>
+            </ul>
+
+            <p class="guide-lead">実力の希望</p>
+            <ul class="guide-list">
+              <li><b>指定なし</b>：レベルを見ません</li>
+              <li><b>バランス型</b>：上手い人と上手くない人を同じチームにして、<b>対戦する2チームの強さを揃えます</b></li>
+              <li><b>同レベル</b>：<b>近い強さの人だけ</b>でコートを作ります（2コート以上で効果があります）</li>
+            </ul>
+
+            <p class="guide-note">この2つは同時に選べます（例：男女ペア＋バランス型）。</p>
+
+            <h3 class="guide-h">レベル（1〜5）</h3>
+            <ul class="guide-list">
+              <li><b>5が一番上手い</b>人です</li>
+              <li>付けていない人は<b>「3」（真ん中）として計算します</b></li>
+              <li>全員付けていなければ、実力の希望を選んでも「指定なし」と同じ結果になります</li>
+            </ul>
+
+            <h3 class="guide-h">いつも自動で効いていること</h3>
+            <ol class="guide-list">
+              <li>出場者は、<b>その日の試合数が少ない人から</b>選ばれます（同じ数ならランダム）</li>
+              <li>その日<b>すでに組んだペア</b>を避けます（まだ組んでいない人が優先されます）</li>
+              <li>その日<b>すでに当たった相手</b>を避けます</li>
+            </ol>
+
+            <p class="guide-note">レベルと性別は、<b>1番（誰が出るか）には影響しません。</b> 上手い・下手で待機が偏ることはありません。</p>
+
+            <h3 class="guide-h">あとから来た人・休憩から戻った人</h3>
+            <ul class="guide-list">
+              <li>途中から「今回参加する」をONにした人も、<b>その時点から公平に扱われます</b></li>
+              <li>いなかった間の試合は数えないので、<b>遅れて来た人がコートを独占することはありません</b></li>
+              <li>休憩から戻った人は、<b>戻って最初の1回だけ優先して出場します</b></li>
+              <li>そのあとは普通に並びます。<b>休んだ分をまとめて取り返すことはありません</b></li>
+            </ul>
+            <p class="guide-note">出場順は「試合数そのもの」ではなく、<b>その人がいた間の取り分に対して、どれだけ足りていないか</b>で決まります。</p>
+
+          </div>
+        </details>
       </section>
 
       <section class="card">
